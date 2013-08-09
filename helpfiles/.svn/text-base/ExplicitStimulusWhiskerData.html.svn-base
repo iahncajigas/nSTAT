@@ -1,0 +1,401 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>EXPLICIT STIMULUS EXAMPLE - WHISKER STIMULATION/THALAMIC NEURON</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-03-02"><meta name="DC.source" content="ExplicitStimulusWhiskerData.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>EXPLICIT STIMULUS EXAMPLE - WHISKER STIMULATION/THALAMIC NEURON</h1><!--introduction--><p>In the worksheet with analyze the stimulus effect and history effect on the firing of a thalamic neuron under a known stimulus consisting of whisker stimulation. Data from Demba Ba (<a href="mailto:demba@mit.edu">demba@mit.edu</a>)</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Load the data</a></li><li><a href="#2">Fit a constant baseline and Find Stimulus Lag</a></li><li><a href="#3">Compare constant rate model with model including stimulus effect</a></li><li><a href="#4">History Effect</a></li><li><a href="#6">Compare Baseline, Baseline+Stimulus Model, Baseline+History+Stimulus</a></li></ul></div><h2>Load the data<a name="1"></a></h2><pre class="codeinput">close <span class="string">all</span>; currdir = pwd;
+index = strfind(currdir,<span class="string">'helpfiles'</span>)-1;
+rootpath = currdir(1:index);
+
+Direction=3; Neuron=1; Stim=2;
+datapath = strcat(rootpath,[<span class="string">'data\Explicit Stimulus\Dir'</span> num2str(Direction)<span class="keyword">...</span>
+    <span class="string">'\Neuron'</span> num2str(Neuron) <span class="string">'\Stim'</span> num2str(Stim) <span class="string">'\'</span>]);
+data=load(strcat(datapath,<span class="string">'trngdataBis.mat'</span>));
+
+time=0:.001:(length(data.t)-1)*.001;
+stimData = data.t;
+spikeTimes = time(data.y==1);
+
+stim = Covariate(time,stimData,<span class="string">'Stimulus'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'stim'</span>});
+baseline = Covariate(time,ones(length(time),1),<span class="string">'Baseline'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">''</span>,<span class="keyword">...</span>
+    {<span class="string">'constant'</span>});
+
+nst = nspikeTrain(spikeTimes);
+nspikeColl = nstColl(nst);
+cc = CovColl({stim,baseline});
+trial = Trial(nspikeColl,cc);
+trial.plot;
+
+figure;
+subplot(2,1,1);
+nst2 = nspikeTrain(spikeTimes);
+nst2.setMaxTime(21);nst.plot;
+subplot(2,1,2);
+stim.getSigInTimeWindow(0,21).plot;
+</pre><img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_01.png" alt=""> <img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_02.png" alt=""> <h2>Fit a constant baseline and Find Stimulus Lag<a name="2"></a></h2><p>We fit a constant rate (Poisson) model to the data and use the fit residual to determine the appropriate lag for the stimulus.</p><pre class="codeinput">clear <span class="string">c</span>;
+selfHist = [] ; NeighborHist = []; sampleRate = 1000;
+c{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>}},sampleRate,selfHist,NeighborHist);
+c{1}.setName(<span class="string">'Baseline'</span>);
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+
+<span class="comment">% Find Stimulus Lag (look for peaks in the cross-covariance function less</span>
+<span class="comment">% than 1 second</span>
+figure;
+results.Residual.xcov(stim).windowedSignal([0,1]).plot;
+[m,ind,ShiftTime] = max(results.Residual.xcov(stim).windowedSignal([0,1]));
+<span class="comment">%Allow for shifts of less than 1 second</span>
+stim = Covariate(time,stimData,<span class="string">'Stimulus'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'stim'</span>});
+stim = stim.shift(ShiftTime);
+baseline = Covariate(time,ones(length(time),1),<span class="string">'Baseline'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">''</span>,<span class="keyword">...</span>
+    {<span class="string">'constant'</span>});
+
+nst = nspikeTrain(spikeTimes);
+nspikeColl = nstColl(nst);
+cc = CovColl({stim,baseline});
+trial = Trial(nspikeColl,cc);
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1
+</pre><img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_03.png" alt=""> <h2>Compare constant rate model with model including stimulus effect<a name="3"></a></h2><p>Addition of the stimulus improves the fits in terms of the KS plot and the making the rescaled ISIs less correlated. The Point Process Residula also looks more "white"</p><pre class="codeinput">clear <span class="string">c</span>;
+selfHist = [] ; NeighborHist = []; sampleRate = 1000;
+c{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>}},sampleRate,selfHist,<span class="keyword">...</span>
+    NeighborHist);
+c{1}.setName(<span class="string">'Baseline'</span>);
+c{2} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>},{<span class="string">'Stimulus'</span>,<span class="string">'stim'</span>}},<span class="keyword">...</span>
+    sampleRate,selfHist,NeighborHist);
+c{2}.setName(<span class="string">'Baseline+Stimulus'</span>);
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results.plotResults;
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1
+Analyzing Configuration #2: Neuron #1
+</pre><img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_04.png" alt=""> <h2>History Effect<a name="4"></a></h2><p>Determine the best history effect model using AIC, BIC, and KS statistic</p><pre class="codeinput">sampleRate=1000;
+delta=1/sampleRate*1;
+maxWindow=1; numWindows=30;
+windowTimes =unique(round([0 logspace(log10(delta),<span class="keyword">...</span>
+    log10(maxWindow),numWindows)]*sampleRate)./sampleRate);
+results =Analysis.computeHistLagForAll(trial,windowTimes,<span class="keyword">...</span>
+    {{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>},{<span class="string">'Stimulus'</span>,<span class="string">'stim'</span>}},<span class="string">'BNLRCG'</span>,0,sampleRate,0);
+
+KSind = find(results{1}.KSStats.ks_stat == min(results{1}.KSStats.ks_stat));
+AICind = find((results{1}.AIC(2:end)-results{1}.AIC(1))== <span class="keyword">...</span>
+               min(results{1}.AIC(2:end)-results{1}.AIC(1)));
+BICind = find((results{1}.BIC(2:end)-results{1}.BIC(1))== <span class="keyword">...</span>
+               min(results{1}.BIC(2:end)-results{1}.BIC(1)));
+<span class="keyword">if</span>(AICind==1)
+    AICind=inf;
+<span class="keyword">end</span>
+<span class="keyword">if</span>(BICind==1)
+    BICind=inf; <span class="comment">%sometime BIC is non-decreasing and the index would be 1</span>
+<span class="keyword">end</span>
+windowIndex = min([KSind,AICind,BICind]) <span class="comment">%use the minimum order model</span>
+Summary = FitResSummary(results);
+Summary.plotSummary;
+
+
+clear <span class="string">c</span>;
+<span class="keyword">if</span>(windowIndex&gt;1)
+    selfHist = windowTimes(1:windowIndex);
+<span class="keyword">else</span>
+    selfHist = [];
+<span class="keyword">end</span>
+NeighborHist = []; sampleRate = 1000;
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1
+Analyzing Configuration #2: Neuron #1
+Analyzing Configuration #3: Neuron #1
+Analyzing Configuration #4: Neuron #1
+Analyzing Configuration #5: Neuron #1
+Analyzing Configuration #6: Neuron #1
+Analyzing Configuration #7: Neuron #1
+Analyzing Configuration #8: Neuron #1
+Analyzing Configuration #9: Neuron #1
+Analyzing Configuration #10: Neuron #1
+Analyzing Configuration #11: Neuron #1
+Analyzing Configuration #12: Neuron #1
+Analyzing Configuration #13: Neuron #1
+Analyzing Configuration #14: Neuron #1
+Analyzing Configuration #15: Neuron #1
+Analyzing Configuration #16: Neuron #1
+Analyzing Configuration #17: Neuron #1
+Analyzing Configuration #18: Neuron #1
+Analyzing Configuration #19: Neuron #1
+Analyzing Configuration #20: Neuron #1
+Analyzing Configuration #21: Neuron #1
+Analyzing Configuration #22: Neuron #1
+Analyzing Configuration #23: Neuron #1
+Analyzing Configuration #24: Neuron #1
+Analyzing Configuration #25: Neuron #1
+Analyzing Configuration #26: Neuron #1
+Analyzing Configuration #27: Neuron #1
+Analyzing Configuration #28: Neuron #1
+
+windowIndex =
+
+     7
+
+</pre><img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_05.png" alt=""> <pre class="codeinput">figure;
+x=1:length(windowTimes);
+subplot(3,1,1); plot(x,results{1}.KSStats.ks_stat,<span class="string">'.'</span>); axis <span class="string">tight</span>; hold <span class="string">on</span>;
+plot(x(windowIndex),results{1}.KSStats.ks_stat(windowIndex),<span class="string">'r*'</span>);
+
+ set(gca,<span class="string">'xtick'</span>,[]);
+ylabel(<span class="string">'KS Statistic'</span>);
+dAIC = results{1}.AIC-results{1}.AIC(1);
+subplot(3,1,2); plot(x,dAIC,<span class="string">'.'</span>);
+ set(gca,<span class="string">'xtick'</span>,[]);
+ylabel(<span class="string">'\Delta AIC'</span>);axis <span class="string">tight</span>; hold <span class="string">on</span>;
+plot(x(windowIndex),dAIC(windowIndex),<span class="string">'r*'</span>);
+dBIC = results{1}.BIC-results{1}.BIC(1);
+subplot(3,1,3); plot(x,dBIC,<span class="string">'.'</span>);
+ylabel(<span class="string">'\Delta BIC'</span>); axis <span class="string">tight</span>; hold <span class="string">on</span>;
+plot(x(windowIndex),dBIC(windowIndex),<span class="string">'r*'</span>);
+
+<span class="keyword">for</span> i=2:length(x)
+   histLabels{i} = [<span class="string">'['</span> num2str(windowTimes(i-1),3) <span class="string">','</span> num2str(windowTimes(i),3) ,<span class="string">']'</span>];
+<span class="keyword">end</span>
+
+figure;
+plot(x,dBIC,<span class="string">'.'</span>);
+xticks = 1:(length(histLabels));
+set(gca,<span class="string">'xtick'</span>,xticks,<span class="string">'xtickLabel'</span>,histLabels,<span class="string">'FontSize'</span>,6);
+<span class="keyword">if</span>(max(xticks)&gt;=1)
+    xticklabel_rotate([],90,[],<span class="string">'Fontsize'</span>,8);
+<span class="keyword">end</span>
+</pre><img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_06.png" alt=""> <img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_07.png" alt=""> <h2>Compare Baseline, Baseline+Stimulus Model, Baseline+History+Stimulus<a name="6"></a></h2><p>Addition of the history effect yields a model that falls within the 95% CI of the KS plot.</p><pre class="codeinput">c{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>}},sampleRate,[],NeighborHist);
+c{1}.setName(<span class="string">'Baseline'</span>);
+c{2} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>},{<span class="string">'Stimulus'</span>,<span class="string">'stim'</span>}},<span class="keyword">...</span>
+                    sampleRate,[],[]);
+c{2}.setName(<span class="string">'Baseline+Stimulus'</span>);
+c{3} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>},{<span class="string">'Stimulus'</span>,<span class="string">'stim'</span>}},<span class="keyword">...</span>
+                    sampleRate,windowTimes(1:windowIndex),[]);
+c{3}.setName(<span class="string">'Baseline+Stimulus+Hist'</span>);
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results.plotResults;
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1
+Analyzing Configuration #2: Neuron #1
+Analyzing Configuration #3: Neuron #1
+</pre><img vspace="5" hspace="5" src="ExplicitStimulusWhiskerData_08.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.13<br></p></div><!--
+##### SOURCE BEGIN #####
+%% EXPLICIT STIMULUS EXAMPLE - WHISKER STIMULATION/THALAMIC NEURON
+% In the worksheet with analyze the stimulus effect and history effect on
+% the firing of a thalamic neuron under a known stimulus consisting of
+% whisker stimulation.
+% Data from Demba Ba (demba@mit.edu)
+
+%% Load the data
+close all; currdir = pwd;
+index = strfind(currdir,'helpfiles')-1;
+rootpath = currdir(1:index);
+
+Direction=3; Neuron=1; Stim=2;
+datapath = strcat(rootpath,['data\Explicit Stimulus\Dir' num2str(Direction)...
+    '\Neuron' num2str(Neuron) '\Stim' num2str(Stim) '\']);
+data=load(strcat(datapath,'trngdataBis.mat'));
+
+time=0:.001:(length(data.t)-1)*.001;
+stimData = data.t;
+spikeTimes = time(data.y==1);
+
+stim = Covariate(time,stimData,'Stimulus','time','s','V',{'stim'});
+baseline = Covariate(time,ones(length(time),1),'Baseline','time','s','',...
+    {'constant'});
+
+nst = nspikeTrain(spikeTimes);
+nspikeColl = nstColl(nst);
+cc = CovColl({stim,baseline});
+trial = Trial(nspikeColl,cc);
+trial.plot;
+
+figure;
+subplot(2,1,1);
+nst2 = nspikeTrain(spikeTimes);
+nst2.setMaxTime(21);nst.plot;
+subplot(2,1,2);
+stim.getSigInTimeWindow(0,21).plot;
+
+%% Fit a constant baseline and Find Stimulus Lag
+% We fit a constant rate (Poisson) model to the data and use the fit
+% residual to determine the appropriate lag for the stimulus.
+clear c;
+selfHist = [] ; NeighborHist = []; sampleRate = 1000; 
+c{1} = TrialConfig({{'Baseline','constant'}},sampleRate,selfHist,NeighborHist); 
+c{1}.setName('Baseline');
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+
+% Find Stimulus Lag (look for peaks in the cross-covariance function less
+% than 1 second
+figure;
+results.Residual.xcov(stim).windowedSignal([0,1]).plot;
+[m,ind,ShiftTime] = max(results.Residual.xcov(stim).windowedSignal([0,1]));
+%Allow for shifts of less than 1 second
+stim = Covariate(time,stimData,'Stimulus','time','s','V',{'stim'});
+stim = stim.shift(ShiftTime);
+baseline = Covariate(time,ones(length(time),1),'Baseline','time','s','',...
+    {'constant'});
+
+nst = nspikeTrain(spikeTimes);
+nspikeColl = nstColl(nst);
+cc = CovColl({stim,baseline});
+trial = Trial(nspikeColl,cc);
+
+%% Compare constant rate model with model including stimulus effect
+% Addition of the stimulus improves the fits in terms of the KS plot and
+% the making the rescaled ISIs less correlated. The Point Process Residula
+% also looks more "white"
+clear c;
+selfHist = [] ; NeighborHist = []; sampleRate = 1000; 
+c{1} = TrialConfig({{'Baseline','constant'}},sampleRate,selfHist,...
+    NeighborHist); 
+c{1}.setName('Baseline');
+c{2} = TrialConfig({{'Baseline','constant'},{'Stimulus','stim'}},...
+    sampleRate,selfHist,NeighborHist);
+c{2}.setName('Baseline+Stimulus');
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results.plotResults;
+
+%% History Effect
+% Determine the best history effect model using AIC, BIC, and KS statistic
+sampleRate=1000;
+delta=1/sampleRate*1; 
+maxWindow=1; numWindows=30;
+windowTimes =unique(round([0 logspace(log10(delta),...
+    log10(maxWindow),numWindows)]*sampleRate)./sampleRate);
+results =Analysis.computeHistLagForAll(trial,windowTimes,...
+    {{'Baseline','constant'},{'Stimulus','stim'}},'BNLRCG',0,sampleRate,0);
+
+KSind = find(results{1}.KSStats.ks_stat == min(results{1}.KSStats.ks_stat));
+AICind = find((results{1}.AIC(2:end)-results{1}.AIC(1))== ...
+               min(results{1}.AIC(2:end)-results{1}.AIC(1)));
+BICind = find((results{1}.BIC(2:end)-results{1}.BIC(1))== ...
+               min(results{1}.BIC(2:end)-results{1}.BIC(1)));
+if(AICind==1)
+    AICind=inf; 
+end
+if(BICind==1)
+    BICind=inf; %sometime BIC is non-decreasing and the index would be 1
+end
+windowIndex = min([KSind,AICind,BICind]) %use the minimum order model
+Summary = FitResSummary(results);
+Summary.plotSummary;
+
+
+clear c;
+if(windowIndex>1)
+    selfHist = windowTimes(1:windowIndex);
+else
+    selfHist = [];
+end
+NeighborHist = []; sampleRate = 1000; 
+%%
+figure;
+x=1:length(windowTimes);
+subplot(3,1,1); plot(x,results{1}.KSStats.ks_stat,'.'); axis tight; hold on;
+plot(x(windowIndex),results{1}.KSStats.ks_stat(windowIndex),'r*');
+
+ set(gca,'xtick',[]); 
+ylabel('KS Statistic'); 
+dAIC = results{1}.AIC-results{1}.AIC(1);
+subplot(3,1,2); plot(x,dAIC,'.');
+ set(gca,'xtick',[]);  
+ylabel('\Delta AIC');axis tight; hold on;
+plot(x(windowIndex),dAIC(windowIndex),'r*');
+dBIC = results{1}.BIC-results{1}.BIC(1);
+subplot(3,1,3); plot(x,dBIC,'.');
+ylabel('\Delta BIC'); axis tight; hold on;
+plot(x(windowIndex),dBIC(windowIndex),'r*');
+
+for i=2:length(x)
+   histLabels{i} = ['[' num2str(windowTimes(i-1),3) ',' num2str(windowTimes(i),3) ,']'];
+end
+
+figure;
+plot(x,dBIC,'.');
+xticks = 1:(length(histLabels));
+set(gca,'xtick',xticks,'xtickLabel',histLabels,'FontSize',6);
+if(max(xticks)>=1)
+    xticklabel_rotate([],90,[],'Fontsize',8);
+end
+           
+
+%% Compare Baseline, Baseline+Stimulus Model, Baseline+History+Stimulus
+% Addition of the history effect yields a model that falls within the 95%
+% CI of the KS plot.
+
+c{1} = TrialConfig({{'Baseline','constant'}},sampleRate,[],NeighborHist);
+c{1}.setName('Baseline');
+c{2} = TrialConfig({{'Baseline','constant'},{'Stimulus','stim'}},...
+                    sampleRate,[],[]); 
+c{2}.setName('Baseline+Stimulus');
+c{3} = TrialConfig({{'Baseline','constant'},{'Stimulus','stim'}},...
+                    sampleRate,windowTimes(1:windowIndex),[]);
+c{3}.setName('Baseline+Stimulus+Hist');
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results.plotResults;
+
+
+
+##### SOURCE END #####
+--></body></html>

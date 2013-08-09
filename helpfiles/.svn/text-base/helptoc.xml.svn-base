@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='ISO-8859-1' ?>
+<!-- $Revision: 1.1.6.2 $ $Date: 2007/09/18 01:15:51 $ -->
+
+<toc version="0.1">
+
+<tocitem target="NeuralSpikeAnalysis_top.html">Neural Spike Analysis Toolbox
+
+<tocitem target="ClassDefinitions.html" image="$toolbox/matlab/icons/greencircleicon.gif">Class Definitions </tocitem>
+
+<tocitem target="Examples.html" image="$toolbox/matlab/icons/greencircleicon.gif">Examples
+    <tocitem target="SignalObjExamples.html">Using the SignalObj Class</tocitem>
+    <tocitem target="CovariateExamples.html">Using the Covariate Class</tocitem>
+    <tocitem target="CovCollExamples.html">Using the CovColl Class</tocitem>
+    <tocitem target="nSpikeTrainExamples.html">Using the nSpikeTrain Class</tocitem>
+    <tocitem target="nstCollExamples.html">Using the nstColl Class</tocitem>
+    <tocitem target="EventsExamples.html">Using the Events Class</tocitem>
+    <tocitem target="HistoryExamples.html">Using the History Class</tocitem>
+    <tocitem target="TrialExamples.html">Using the Trial Class</tocitem>
+    <tocitem target="TrialConfigExamples.html">Using the TrialConfig Class</tocitem>
+    <tocitem target="ConfigCollExamples.html">Using the ConfigColl Class</tocitem>
+    <tocitem target="AnalysisExamples.html">Using the Analysis Class</tocitem>
+    <tocitem target="FitResultExamples.html">Using the FitResult Class</tocitem>    
+    <tocitem target="FitResSummary">Using the FitResSummary Class</tocitem>
+    <tocitem target="PPThinning.html">Point Process simulation via Thinning</tocitem>
+    <tocitem target="PSTHEstimation.html">Example Data Analysis - Simulated Data - Computing a Peri-Stimulus Time Histogram (PSTH)</tocitem>
+    <tocitem target="ValidationDataSet.html">Example Data Analysis - Simulated Constant (Piecewise Constant) Rate Poisson</tocitem>
+    <tocitem target="mEPSCAnalysis.html">Example Data Analysis - Miniature Excitatory Post-Synaptic Currents (mEPSCs)</tocitem>
+    <tocitem target="PPSimExample.html">Example Data Analysis - Simulated Explicit Stimulus and History</tocitem>
+    <tocitem target="ExplicitStimulusWhiskerData.html">Example Data Analysis - Explicit Stimulus</tocitem>
+    <tocitem target="HippocampalPlaceCellExample.html">Example Data Analysis - Hippocampal Place Cell Receptive Field Estimation</tocitem>
+    <tocitem target="DecodingExample.html">Example Data Analysis - Decoding Univariate Simulated Stimuli (No History Effect)</tocitem>
+    <tocitem target="DecodingExampleWithHist.html">Example Data Analysis - Decoding Univariate Simulated Stimuli with and without History Effect</tocitem>
+    <tocitem target="StimulusDecode2D.html">Example Data Analysis - Decoding Bivariate Simulated Stimuli</tocitem>
+    <tocitem target="nSTATPaperExamples.html">nSTAT Paper Examples</tocitem>
+
+</tocitem>
+
+<tocitem target="http://neurostat.mit.edu" image="$toolbox/matlab/icons/webicon.gif">Neuroscience Statistics Research Laboratory</tocitem>
+
+</tocitem>
+</toc>

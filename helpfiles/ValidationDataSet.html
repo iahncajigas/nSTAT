@@ -1,0 +1,345 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>Software Validation Data Set</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-03-02"><meta name="DC.source" content="ValidationDataSet.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>Software Validation Data Set</h1><!--introduction--><p>The purpose of this example is to two important test cases of data to validate the Neural Spike Analysis Toolbox.</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Case #1: Constant Rate Poisson Process</a></li><li><a href="#6">Case #2: Piece-wise Constant Rate Poisson Process</a></li></ul></div><h2>Case #1: Constant Rate Poisson Process<a name="1"></a></h2><p>First we want to show that when neural firing activity is generated from a constant rate poisson process, the algorithm is able to estimate the value of this constant rate.</p><pre class="codeinput">clear <span class="string">all</span>;
+close <span class="string">all</span>;
+
+p=0.01;         <span class="comment">% bernoilli probability</span>
+N=100001;       <span class="comment">% Number of coin flips</span>
+delta = 0.001;  <span class="comment">% binsize</span>
+T=N*delta;      <span class="comment">% total time window</span>
+lambda=N*p/T    <span class="comment">% lambda*T = N*p</span>
+
+mu = log(lambda*delta/(1-lambda*delta))
+</pre><pre class="codeoutput">
+lambda =
+
+    10
+
+
+mu =
+
+   -4.5951
+
+</pre><p>Now generate data for two neurons based on this constant rate</p><pre class="codeinput"><span class="keyword">for</span> i=1:2
+    t=linspace(0,T,N);
+    ind=rand(1,N)&lt;p;     <span class="comment">%generate the coin-flip indices for heads or 1's</span>
+    spikeTimes = t(ind); <span class="comment">%get time spikes based on indices</span>
+    nst{i}=nspikeTrain(spikeTimes,<span class="string">''</span>,delta); <span class="comment">% create neuron spike train</span>
+    nst{i}.setMinTime(0);
+    nst{i}.setMaxTime(T);
+<span class="keyword">end</span>
+</pre><p>For a sanity check we can plot the ISI histogram for the two neurons and verify that they are exponentially distributed with \lambda = N*p/T;</p><pre class="codeinput">nst{1}.plotISIHistogram;
+</pre><img vspace="5" hspace="5" src="ValidationDataSet_01.png" alt=""> <p>Setup the analysis using the Neural Spike Analysis Toolbox Since we are going to try to fit a constant rate model, we create a baseline covariate that is constant and equal to 1 for the duration of the trial. This data in the covarate will be labeled 'constant';</p><pre class="codeinput">spikeColl=nstColl(nst); <span class="comment">%create a nstColl - a collection of spikeTrains</span>
+cov=Covariate(t,ones(length(t),1),<span class="string">'Baseline'</span>,<span class="string">'s'</span>,<span class="string">''</span>,<span class="string">''</span>,{<span class="string">'mu'</span>});
+cc=CovColl({cov}); <span class="comment">% Gather all the covariates</span>
+trial=Trial(spikeColl, cc); <span class="comment">%Create the trial</span>
+
+<span class="comment">% Specify how we want to perform the analysis</span>
+clear <span class="string">c</span>;
+sampleRate=1000;
+<span class="comment">%Try just using the 'constant' data from the baseline covariate</span>
+c{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'mu'</span>}},sampleRate,[],[]);
+c{1}.setName(<span class="string">'Baseline'</span>);
+cfgColl= ConfigColl(c); <span class="comment">%place desired configurations in a ConfigColl structure</span>
+</pre><p>Run the analysis</p><pre class="codeinput">results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results{1}.plotResults; subplot(2,4,[5 6]); plot(mu,<span class="string">'ro'</span>, <span class="string">'MarkerSize'</span>,10);
+results{2}.plotResults; subplot(2,4,[5 6]); plot(mu,<span class="string">'ro'</span>, <span class="string">'MarkerSize'</span>,10);
+figure;
+subplot(1,2,1);results{1}.lambda.plot; hold <span class="string">on</span>; plot(results{1}.lambda.time,lambda*ones(length(results{1}.lambda.time),1),<span class="string">'r-.'</span>,<span class="string">'LineWidth'</span>,3);
+subplot(1,2,2);results{2}.lambda.plot; hold <span class="string">on</span>; plot(results{2}.lambda.time,lambda*ones(length(results{2}.lambda.time),1),<span class="string">'r-.'</span>,<span class="string">'LineWidth'</span>,3);
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1,2
+</pre><img vspace="5" hspace="5" src="ValidationDataSet_02.png" alt=""> <img vspace="5" hspace="5" src="ValidationDataSet_03.png" alt=""> <img vspace="5" hspace="5" src="ValidationDataSet_04.png" alt=""> <h2>Case #2: Piece-wise Constant Rate Poisson Process<a name="6"></a></h2><p>Make a joint process be the sum of two independet and non-overlapping Poisson processes with different rates. During the first interval, only observer arrivals from process 1, and during the second interval only observe arrivals from the second process. Compare the results of estimate the complete process as the sum of two distinct independent and non-overlapping Poisson processes versus a single constant rate process.</p><pre class="codeinput"><span class="comment">% Process 1</span>
+p1=0.001; <span class="comment">% bernoilli probability of process 1</span>
+N1=100000; <span class="comment">%</span>
+delta = 0.001;
+T1=N1*delta;
+lambda1=N1*p1/T1    <span class="comment">% lambda*T = N*p</span>
+mu1 = log(lambda1*delta/(1-lambda1*delta))
+<span class="comment">%Process 2</span>
+p2=0.01;  <span class="comment">% bernoilli probability of process 1</span>
+N2=100000;
+T2=N2*delta;
+lambda2=N2*p2/T2    <span class="comment">% lambda*T = N*p</span>
+mu2 = log(lambda2*delta/(1-lambda2*delta))
+
+<span class="comment">%Estimate of constant rate process:</span>
+lambdaConst = (N1*p1 + N2*p2)/(T1+T2)
+muConst = log(lambdaConst*delta/(1-lambdaConst*delta))
+</pre><pre class="codeoutput">
+lambda1 =
+
+     1
+
+
+mu1 =
+
+   -6.9068
+
+
+lambda2 =
+
+    10
+
+
+mu2 =
+
+   -4.5951
+
+
+lambdaConst =
+
+    5.5000
+
+
+muConst =
+
+   -5.1975
+
+</pre><p>Generate the data for 2 neurons</p><pre class="codeinput"><span class="keyword">for</span> i=1:2
+    tTot = linspace(0,(T1+T2),(N1+N2+1));
+    t1=tTot(tTot&lt;=T1);
+    ind1=rand(1,N1)&lt;p1;
+    spikeTimes1 = t1(ind1);
+    t2=tTot(tTot&gt;T1);
+    ind2=rand(1,N2)&lt;p2;
+    spikeTimes2 = t2(ind2);
+    tTot = [t1'; t2'];
+
+    nst{i}=nspikeTrain([spikeTimes1 spikeTimes2],<span class="string">''</span>,delta);
+    nst{i}.setMinTime(0);
+    nst{i}.setMaxTime(max(t2));
+<span class="keyword">end</span>
+</pre><p>Generate the trial data;</p><pre class="codeinput">spikeColl=nstColl(nst); <span class="comment">%create a nstColl</span>
+cov=Covariate(tTot,[ones(length(tTot),1), tTot&lt;=max(t1), tTot&gt;max(t1)],<span class="string">'Baseline'</span>,<span class="string">'s'</span>,<span class="string">''</span>,<span class="string">''</span>,{<span class="string">'muConst'</span>,<span class="string">'mu1'</span>,<span class="string">'mu2'</span>});
+cc=CovColl({cov});
+
+<span class="comment">% Specify how we want to perform the analysis</span>
+sampleRate=1000;
+trial=Trial(spikeColl, cc);
+clear <span class="string">c</span>;
+<span class="comment">% Constant rate throughout</span>
+c{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'muConst'</span>}},sampleRate,[],[]);
+c{1}.setName(<span class="string">'Baseline'</span>);
+<span class="comment">% Constant rate for epoch1 and Constat rate for epoch2 but distinct</span>
+c{2} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'mu1'</span>,<span class="string">'mu2'</span>}},sampleRate,[],[]);
+c{2}.setName(<span class="string">'Variable'</span>);
+cfgColl= ConfigColl(c);
+</pre><p>Run the analysis</p><pre class="codeinput">results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results{1}.plotResults;
+results{2}.plotResults;
+figure;
+subplot(1,2,1); results{1}.lambda.plot;
+subplot(1,2,2); results{2}.lambda.plot;
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1,2
+Analyzing Configuration #2: Neuron #1,2
+</pre><img vspace="5" hspace="5" src="ValidationDataSet_05.png" alt=""> <img vspace="5" hspace="5" src="ValidationDataSet_06.png" alt=""> <img vspace="5" hspace="5" src="ValidationDataSet_07.png" alt=""> <p>Compare the results across the two neurons</p><pre class="codeinput">Summary = FitResSummary(results);
+Summary.plotSummary;
+</pre><img vspace="5" hspace="5" src="ValidationDataSet_08.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.13<br></p></div><!--
+##### SOURCE BEGIN #####
+%% Software Validation Data Set
+% The purpose of this example is to two important test cases of data to
+% validate the Neural Spike Analysis Toolbox.
+
+
+%% Case #1: Constant Rate Poisson Process
+% First we want to show that when neural firing activity is generated from
+% a constant rate poisson process, the algorithm is able to estimate the
+% value of this constant rate.
+
+clear all;
+close all;
+
+p=0.01;         % bernoilli probability
+N=100001;       % Number of coin flips
+delta = 0.001;  % binsize
+T=N*delta;      % total time window
+lambda=N*p/T    % lambda*T = N*p
+
+mu = log(lambda*delta/(1-lambda*delta))
+%%
+% Now generate data for two neurons based on this constant rate
+for i=1:2
+    t=linspace(0,T,N); 
+    ind=rand(1,N)<p;     %generate the coin-flip indices for heads or 1's
+    spikeTimes = t(ind); %get time spikes based on indices
+    nst{i}=nspikeTrain(spikeTimes,'',delta); % create neuron spike train
+    nst{i}.setMinTime(0); 
+    nst{i}.setMaxTime(T);
+end
+
+%%
+% For a sanity check we can plot the ISI histogram for the two neurons and
+% verify that they are exponentially distributed with \lambda = N*p/T;
+nst{1}.plotISIHistogram;
+
+%%
+% Setup the analysis using the Neural Spike Analysis Toolbox
+% Since we are going to try to fit a constant rate model, we create a
+% baseline covariate that is constant and equal to 1 for the duration of
+% the trial. This data in the covarate will be labeled 'constant';
+
+spikeColl=nstColl(nst); %create a nstColl - a collection of spikeTrains
+cov=Covariate(t,ones(length(t),1),'Baseline','s','','',{'mu'});
+cc=CovColl({cov}); % Gather all the covariates
+trial=Trial(spikeColl, cc); %Create the trial
+
+% Specify how we want to perform the analysis
+clear c;
+sampleRate=1000;
+%Try just using the 'constant' data from the baseline covariate
+c{1} = TrialConfig({{'Baseline','mu'}},sampleRate,[],[]); 
+c{1}.setName('Baseline');
+cfgColl= ConfigColl(c); %place desired configurations in a ConfigColl structure
+
+
+
+%%
+% Run the analysis
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results{1}.plotResults; subplot(2,4,[5 6]); plot(mu,'ro', 'MarkerSize',10);
+results{2}.plotResults; subplot(2,4,[5 6]); plot(mu,'ro', 'MarkerSize',10);
+figure; 
+subplot(1,2,1);results{1}.lambda.plot; hold on; plot(results{1}.lambda.time,lambda*ones(length(results{1}.lambda.time),1),'r-.','LineWidth',3);
+subplot(1,2,2);results{2}.lambda.plot; hold on; plot(results{2}.lambda.time,lambda*ones(length(results{2}.lambda.time),1),'r-.','LineWidth',3);
+%% Case #2: Piece-wise Constant Rate Poisson Process
+% Make a joint process be the sum of two independet and non-overlapping
+% Poisson processes with different rates. During the first interval, only
+% observer arrivals from process 1, and during the second interval only
+% observe arrivals from the second process. Compare the results of estimate
+% the complete process as the sum of two distinct independent and
+% non-overlapping Poisson processes versus a single constant rate process.
+
+% Process 1
+p1=0.001; % bernoilli probability of process 1
+N1=100000; % 
+delta = 0.001;
+T1=N1*delta;
+lambda1=N1*p1/T1    % lambda*T = N*p
+mu1 = log(lambda1*delta/(1-lambda1*delta))
+%Process 2
+p2=0.01;  % bernoilli probability of process 1
+N2=100000;
+T2=N2*delta;
+lambda2=N2*p2/T2    % lambda*T = N*p
+mu2 = log(lambda2*delta/(1-lambda2*delta))
+
+%Estimate of constant rate process:
+lambdaConst = (N1*p1 + N2*p2)/(T1+T2)
+muConst = log(lambdaConst*delta/(1-lambdaConst*delta))
+
+%% 
+% Generate the data for 2 neurons
+for i=1:2
+    tTot = linspace(0,(T1+T2),(N1+N2+1));
+    t1=tTot(tTot<=T1);
+    ind1=rand(1,N1)<p1;
+    spikeTimes1 = t1(ind1);
+    t2=tTot(tTot>T1);
+    ind2=rand(1,N2)<p2;
+    spikeTimes2 = t2(ind2);
+    tTot = [t1'; t2'];
+    
+    nst{i}=nspikeTrain([spikeTimes1 spikeTimes2],'',delta);
+    nst{i}.setMinTime(0);
+    nst{i}.setMaxTime(max(t2));
+end
+
+%%
+% Generate the trial data;
+spikeColl=nstColl(nst); %create a nstColl
+cov=Covariate(tTot,[ones(length(tTot),1), tTot<=max(t1), tTot>max(t1)],'Baseline','s','','',{'muConst','mu1','mu2'});
+cc=CovColl({cov});
+
+% Specify how we want to perform the analysis
+sampleRate=1000;
+trial=Trial(spikeColl, cc);
+clear c;
+% Constant rate throughout
+c{1} = TrialConfig({{'Baseline','muConst'}},sampleRate,[],[]); 
+c{1}.setName('Baseline');
+% Constant rate for epoch1 and Constat rate for epoch2 but distinct
+c{2} = TrialConfig({{'Baseline','mu1','mu2'}},sampleRate,[],[]); 
+c{2}.setName('Variable');
+cfgColl= ConfigColl(c);
+
+%%
+% Run the analysis
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+results{1}.plotResults;
+results{2}.plotResults;
+figure; 
+subplot(1,2,1); results{1}.lambda.plot;
+subplot(1,2,2); results{2}.lambda.plot;
+%% 
+% Compare the results across the two neurons
+Summary = FitResSummary(results);
+Summary.plotSummary;
+
+
+
+
+##### SOURCE END #####
+--></body></html>

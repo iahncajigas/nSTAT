@@ -1,0 +1,239 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>STIMULUS DECODING</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-03-02"><meta name="DC.source" content="DecodingExample.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>STIMULUS DECODING</h1><!--introduction--><p>In this example we show how to decode a univariate and a bivariate stimulus based on a point process observations using nSTAT. Even though due to the simulated nature of the data, we know the exact condition intensity function, we estimate the parameters before moving on to the decoding stage.</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Generate the conditional Intensity Function</a></li><li><a href="#2">Fit a model to the spikedata to obtain a model CIF</a></li></ul></div><h2>Generate the conditional Intensity Function<a name="1"></a></h2><pre class="codeinput">    close <span class="string">all</span>;
+    delta = 0.001; Tmax = 10;
+    time = 0:delta:Tmax;
+    f=.1; b1=1;b0=-3;
+    x = sin(2*pi*f*time);
+    expData = exp(b1*x+b0);
+    lambdaData = expData./(1+expData);
+
+    lambda = Covariate(time,lambdaData./delta, <span class="string">'\Lambda(t)'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'Hz'</span>,{<span class="string">'\lambda_{1}'</span>},{{<span class="string">' ''b'', ''LineWidth'' ,2'</span>}});
+
+    numRealizations = 10;
+    spikeColl = CIF.simulateCIFByThinningFromLambda(lambda,numRealizations);
+    figure;
+    subplot(2,1,1); spikeColl.plot;
+    subplot(2,1,2); lambda.plot;
+</pre><img vspace="5" hspace="5" src="DecodingExample_01.png" alt=""> <h2>Fit a model to the spikedata to obtain a model CIF<a name="2"></a></h2><pre class="codeinput">stim = Covariate(time,sin(2*pi*f*time),<span class="string">'Stimulus'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'stim'</span>});
+baseline = Covariate(time,ones(length(time),1),<span class="string">'Baseline'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">''</span>,<span class="keyword">...</span>
+                    {<span class="string">'constant'</span>});
+figure;
+cc = CovColl({stim,baseline});
+trial = Trial(spikeColl,cc);
+trial.plot;
+
+clear <span class="string">c</span>;
+selfHist = [] ; NeighborHist = []; sampleRate = 1000;
+c{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>}},sampleRate,selfHist,<span class="keyword">...</span>
+    NeighborHist);
+c{1}.setName(<span class="string">'Baseline'</span>);
+c{2} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'constant'</span>},{<span class="string">'Stimulus'</span>,<span class="string">'stim'</span>}},<span class="keyword">...</span>
+    sampleRate,selfHist,NeighborHist);
+c{2}.setName(<span class="string">'Baseline+Stimulus'</span>);
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+figure;
+results{1}.plotResults;
+Summary = FitResSummary(results);
+
+paramEst = squeeze(Summary.bAct(:,2,:));
+meanParams = mean(paramEst,2);
+</pre><pre class="codeoutput">Analyzing Configuration #1: Neuron #1,2,3,4,5,6,7,8,9,10
+Analyzing Configuration #2: Neuron #1,2,3,4,5,6,7,8,9,10
+</pre><img vspace="5" hspace="5" src="DecodingExample_02.png" alt=""> <img vspace="5" hspace="5" src="DecodingExample_03.png" alt=""> <img vspace="5" hspace="5" src="DecodingExample_04.png" alt=""> <p>So we now have a model for lambda lambda = exp(b_0 + b_1*x(t))./(1+exp(b_0 + b_1*x(t)) * 1/delta because exp(b_0 + b_1*x(t))&lt;&lt;1 we can approximate this lambda by just the numerator i.e. lambda = exp(b_0 + b_1*x(t))./delta</p><p>Now suppose we wanted to decode x(t) based on only having observed lambda</p><pre class="codeinput">clear <span class="string">lambdaCIF</span>;
+b0=paramEst(1,:);
+b1=paramEst(2,:);
+<span class="keyword">for</span> i=1:numRealizations
+    <span class="comment">% Construct a CIF object for each realization based on our encoding</span>
+    <span class="comment">% results abovel</span>
+    lambdaCIF{i} = CIF([b0(i) b1(i)],{<span class="string">'1'</span>,<span class="string">'x'</span>},{<span class="string">'x'</span>},<span class="string">'binomial'</span>);
+<span class="keyword">end</span>
+<span class="comment">% close all;</span>
+spikeColl.resample(1/delta);
+dN=spikeColl.dataToMatrix;
+<span class="comment">% Make noise according to the dynamic range of the stimulus</span>
+Q=2*std(stim.data(2:end)-stim.data(1:end-1));
+A=1;
+[x_p, W_p, x_u, W_u] = DecodingAlgorithms.PPDecodeFilterLinear(A, Q, dN',b0,b1,<span class="string">'binomial'</span>,delta);
+figure;
+zVal=3;
+ciLower = min(x_u(1:end)-zVal*squeeze(sqrt(W_u(1:end)))',x_u(1:end)+zVal*squeeze(sqrt(W_u(1:end)))');
+ciUpper = max(x_u(1:end)-zVal*squeeze(sqrt(W_u(1:end)))',x_u(1:end)+zVal*squeeze(sqrt(W_u(1:end)))');
+hEst=plot(time,x_u(1:end),<span class="string">'b'</span>,time,ciLower,<span class="string">'g'</span>,time,ciUpper,<span class="string">'g'</span>); hold <span class="string">on</span>;
+hold <span class="string">all</span>;
+
+hStim=stim.plot([],{{<span class="string">' ''k'',''Linewidth'',2'</span>}});
+legend <span class="string">off</span>;
+legend([hEst(1) hEst(2) hEst(3) hStim],<span class="string">'x_{k|k}(t)'</span>,strcat(<span class="string">'x_{k|k}(t)-'</span>,num2str(zVal),<span class="string">'\sigma_{k|k}'</span>),<span class="keyword">...</span>
+        strcat(<span class="string">'x_{k|k}(t)+'</span>,num2str(zVal),<span class="string">'\sigma_{k|k}'</span>),<span class="string">'x_{k|k}(t)'</span>,<span class="string">'x(t)'</span>);
+title([<span class="string">'Decoded Stimulus +/- 99% confidence intervals using '</span> num2str(numRealizations) <span class="string">' cells'</span>]);
+</pre><pre class="codeoutput">Warning: Ignoring extra legend entries. 
+</pre><img vspace="5" hspace="5" src="DecodingExample_05.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.13<br></p></div><!--
+##### SOURCE BEGIN #####
+%% STIMULUS DECODING
+% In this example we show how to decode a univariate and a bivariate
+% stimulus based on a point process observations using nSTAT. Even though 
+% due to the simulated nature of the data, we know the exact condition 
+% intensity function, we estimate the parameters before moving on to the 
+% decoding stage.
+%% Generate the conditional Intensity Function
+
+    close all;
+    delta = 0.001; Tmax = 10;
+    time = 0:delta:Tmax;
+    f=.1; b1=1;b0=-3;
+    x = sin(2*pi*f*time);
+    expData = exp(b1*x+b0); 
+    lambdaData = expData./(1+expData);
+
+    lambda = Covariate(time,lambdaData./delta, '\Lambda(t)','time','s','Hz',{'\lambda_{1}'},{{' ''b'', ''LineWidth'' ,2'}});
+
+    numRealizations = 10;
+    spikeColl = CIF.simulateCIFByThinningFromLambda(lambda,numRealizations);
+    figure; 
+    subplot(2,1,1); spikeColl.plot;
+    subplot(2,1,2); lambda.plot;
+
+%% Fit a model to the spikedata to obtain a model CIF
+
+stim = Covariate(time,sin(2*pi*f*time),'Stimulus','time','s','V',{'stim'});
+baseline = Covariate(time,ones(length(time),1),'Baseline','time','s','',...
+                    {'constant'});
+figure;
+cc = CovColl({stim,baseline});
+trial = Trial(spikeColl,cc);
+trial.plot;
+
+clear c;
+selfHist = [] ; NeighborHist = []; sampleRate = 1000; 
+c{1} = TrialConfig({{'Baseline','constant'}},sampleRate,selfHist,...
+    NeighborHist); 
+c{1}.setName('Baseline');
+c{2} = TrialConfig({{'Baseline','constant'},{'Stimulus','stim'}},...
+    sampleRate,selfHist,NeighborHist);
+c{2}.setName('Baseline+Stimulus');
+cfgColl= ConfigColl(c);
+results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0);
+figure;
+results{1}.plotResults;
+Summary = FitResSummary(results);
+
+paramEst = squeeze(Summary.bAct(:,2,:));
+meanParams = mean(paramEst,2);
+
+%% 
+% So we now have a model for lambda
+% lambda = exp(b_0 + b_1*x(t))./(1+exp(b_0 + b_1*x(t)) * 1/delta
+% because exp(b_0 + b_1*x(t))<<1 we can approximate this lambda by
+% just the numerator i.e.
+% lambda = exp(b_0 + b_1*x(t))./delta
+%
+%
+% Now suppose we wanted to decode x(t) based on only having observed lambda
+%
+%
+% 
+
+clear lambdaCIF;
+b0=paramEst(1,:);
+b1=paramEst(2,:);
+for i=1:numRealizations
+    % Construct a CIF object for each realization based on our encoding
+    % results abovel
+    lambdaCIF{i} = CIF([b0(i) b1(i)],{'1','x'},{'x'},'binomial');
+end
+% close all;
+spikeColl.resample(1/delta);
+dN=spikeColl.dataToMatrix;
+% Make noise according to the dynamic range of the stimulus
+Q=2*std(stim.data(2:end)-stim.data(1:end-1));
+A=1;
+[x_p, W_p, x_u, W_u] = DecodingAlgorithms.PPDecodeFilterLinear(A, Q, dN',b0,b1,'binomial',delta);
+figure;
+zVal=3;
+ciLower = min(x_u(1:end)-zVal*squeeze(sqrt(W_u(1:end)))',x_u(1:end)+zVal*squeeze(sqrt(W_u(1:end)))');
+ciUpper = max(x_u(1:end)-zVal*squeeze(sqrt(W_u(1:end)))',x_u(1:end)+zVal*squeeze(sqrt(W_u(1:end)))');
+hEst=plot(time,x_u(1:end),'b',time,ciLower,'g',time,ciUpper,'g'); hold on;
+hold all;            
+
+hStim=stim.plot([],{{' ''k'',''Linewidth'',2'}}); 
+legend off;
+legend([hEst(1) hEst(2) hEst(3) hStim],'x_{k|k}(t)',strcat('x_{k|k}(t)-',num2str(zVal),'\sigma_{k|k}'),...
+        strcat('x_{k|k}(t)+',num2str(zVal),'\sigma_{k|k}'),'x_{k|k}(t)','x(t)');
+title(['Decoded Stimulus +/- 99% confidence intervals using ' num2str(numRealizations) ' cells']);
+
+
+
+
+
+
+
+
+
+
+##### SOURCE END #####
+--></body></html>

@@ -1,0 +1,325 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>Using the SignalObj Class</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-03-02"><meta name="DC.source" content="SignalObjExamples.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>Using the SignalObj Class</h1><!--introduction--><p>In this file we will give several examples of how the SignalObj can be used. A description of all of the properties of SignalObj can be found at: <a href="matlab:doc('SignalObj')">SignalObj Class Definition</a></p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Example 1: Defining and Plotting Signals</a></li><li><a href="#4">Example 2: Changing Signal Properties</a></li><li><a href="#8">Example 3:  Resampling and Windowing SignalObjs</a></li><li><a href="#10">Example 4: SignalObj Mathematical Operations</a></li><li><a href="#12">Example 5: Spectra</a></li><li><a href="#13">Example 6: View signal variability</a></li></ul></div><h2>Example 1: Defining and Plotting Signals<a name="1"></a></h2><p>Define a two dimensional SignalObj, <img src="SignalObjExamples_eq72999.png" alt="$s$">, representing two voltage signals that were <img src="SignalObjExamples_eq57658.png" alt="$v1$"> and <img src="SignalObjExamples_eq68144.png" alt="$v2$"> aquired simultaneously at 100Hz. Another SignalObj, <img src="SignalObjExamples_eq40692.png" alt="$s1$"> , is created from just <img src="SignalObjExamples_eq57658.png" alt="$v1$">. Both signals are plotted.</p><pre class="codeinput">close <span class="string">all</span>;
+sampleRate=100; t=0:1/sampleRate:10; freq=2;
+v1=sin(2*pi*freq*t); v2=sin(v1.^2); v=[v1;v2];
+s=SignalObj(t,v,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+s1=SignalObj(t,v1,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>});
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s1.plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_01.png" alt=""> <p>Note how the legend show the appropriate labels. If the dataLabels had not been set, the legend would not appear.</p><p>Instead of defining a new SignalObj, <img src="SignalObjExamples_eq40692.png" alt="$s1$">, the <img src="SignalObjExamples_eq68144.png" alt="$v2$"> data in <img src="SignalObjExamples_eq72999.png" alt="$s$"> can be masked away and then the plot will only show the data of interest. It is important to note that setMask is used to set which signals should remain visible. Also note that when a data is masked, converting the SignalObj to a Matrix only returns the visible data. A new SignalObj can be created from the orignal SignalObj which only contains the data of interest. Lastly, the all labeled components can be accessed independently via the vars subfield.</p><pre class="codeinput">subplot(2,1,1); s.setMask({<span class="string">'v1'</span>}); s.plot; s.resetMask;
+subplot(2,1,2); s.setMask({<span class="string">'v2'</span>}); s.plot; size(s.dataToMatrix)
+s.resetMask;
+</pre><pre class="codeoutput">
+ans =
+
+        1001           1
+
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_02.png" alt=""> <p><i>Note about repeated dataLabels</i> It is possible to use SignalObj's to store different realizations of the same physical signal. For example, independent measurements of <img src="SignalObjExamples_eq57658.png" alt="$v1$"> at two distinct experiments.</p><pre class="codeinput">s=SignalObj(t,[v1; v1; v2] ,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+s.getSubSignal({<span class="string">'v1'</span>}); <span class="comment">%returns a SignalObj with both realizations of v1</span>
+figure
+s.getSubSignal({<span class="string">'v1'</span>}).plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_03.png" alt=""> <h2>Example 2: Changing Signal Properties<a name="4"></a></h2><pre class="codeinput">figure
+s=SignalObj(t,v,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s.setXlabel(<span class="string">'distance'</span>); s.setXUnits(<span class="string">'cm'</span>); s.plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_04.png" alt=""> <pre class="codeinput">figure
+subplot(2,1,1); s.setDataLabels({<span class="string">'r1'</span>,<span class="string">'r2'</span>}); s.setYLabel(<span class="string">'Temperature'</span>); s.setYUnits(<span class="string">'C'</span>); s.plot;
+subplot(2,1,2); s.setMaxTime(14); s.setMinTime(-2); s.plot;
+
+s.setName(<span class="string">'testName'</span>); <span class="comment">%should work since we are using a method</span>
+<span class="keyword">if</span>(strcmp(s.name,<span class="string">'testName'</span>))
+    fprintf(<span class="string">'Name successfully set \n'</span>);
+<span class="keyword">else</span>
+    fprintf(<span class="string">'Could not set name \n'</span>);
+<span class="keyword">end</span>
+<span class="comment">% s.name = 'testName'; %returns an error because the field is private;</span>
+</pre><pre class="codeoutput">Name successfully set 
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_05.png" alt=""> <p>setMaxTime and setMinTime can be given a second parameter, holdVals, that determines whether the endpoint values are kept or set to zero if the times being set are outside the original window of the data.</p><p>Plotting properties for individual components of the data can be set via the when plotting or by call the setPlotProps method.</p><pre class="codeinput">figure
+s=SignalObj(t,v,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+subplot(2,1,1); s.plot(<span class="string">'v1'</span>,{{<span class="string">' ''k'' '</span>}});
+subplot(2,1,2); s.plot(<span class="string">'all'</span>,{{<span class="string">' ''k'' '</span>},{<span class="string">' ''-.g'' '</span>}});
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_06.png" alt=""> <pre class="codeinput">figure
+subplot(2,1,1); s.plot({<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+subplot(2,1,2); s.plot({<span class="string">'v1'</span>,<span class="string">'v2'</span>},{{<span class="string">' ''k'' '</span>},{<span class="string">' ''-.g'' '</span>}});
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_07.png" alt=""> <h2>Example 3:  Resampling and Windowing SignalObjs<a name="8"></a></h2><pre class="codeinput">figure
+s=SignalObj(t,v,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+s1=s.resample(.1*sampleRate);
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s1.plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_08.png" alt=""> <pre class="codeinput">figure
+subplot(2,1,1); s.getSigInTimeWindow(-2,3).plot;
+subplot(2,1,2); s.plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_09.png" alt=""> <h2>Example 4: SignalObj Mathematical Operations<a name="10"></a></h2><pre class="codeinput">s=SignalObj(t,v,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+figure
+s2=mean(s); <span class="comment">%mean of each dimension;</span>
+s5=s-s2;  <span class="comment">%zero mean version of s;</span>
+s5.plot;
+
+figure
+s2=mean(s,2); <span class="comment">%mean of s across its dimensions;</span>
+s2.plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_10.png" alt=""> <img vspace="5" hspace="5" src="SignalObjExamples_11.png" alt=""> <p>SignalObj's can be added, subtracted, and multiplied.\</p><pre class="codeinput">figure
+s4=2*s+s5;
+s4.plot;
+
+figure
+subplot(3,1,1);
+s.integral.plot;
+subplot(3,1,2);
+s.derivative.plot;
+subplot(3,1,3);
+s6=s.integral.derivative-s; <span class="comment">%should equal zero;</span>
+s6.plot;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_12.png" alt=""> <img vspace="5" hspace="5" src="SignalObjExamples_13.png" alt=""> <h2>Example 5: Spectra<a name="12"></a></h2><pre class="codeinput">s=SignalObj(t,v,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+figure;
+s.MTMspectrum;
+
+figure
+s.periodogram;
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_14.png" alt=""> <img vspace="5" hspace="5" src="SignalObjExamples_15.png" alt=""> <h2>Example 6: View signal variability<a name="13"></a></h2><p>We can look at the variability of signals with regards to their labels or or irrespective of their labels. Lets create a SignalObj that has several components, and some noise. We mislabel two signals to add alot of variability for illustration</p><pre class="codeinput">sampleRate=5000; t=0:1/sampleRate:1; t=t'; freq=2;
+v1=sin(2*pi*freq*t); v2=sin(v1.^2);
+noise=.1*randn(length(t),6); <span class="comment">%gaussian random noise</span>
+data= [v1 v2 v2 v1 v2 v1] + noise;
+s=SignalObj(t,data,<span class="string">'Voltage'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'V'</span>,{<span class="string">'v1'</span>,<span class="string">'v2'</span>,<span class="string">'v2'</span>,<span class="string">'v1'</span>,<span class="string">'v1'</span>,<span class="string">'v2'</span>});
+figure;
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s.plotAllVariability; <span class="comment">%disregards labels;</span>
+s.plotVariability; <span class="comment">%creates two figures, one for 'v1' and one for 'v2'</span>
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_16.png" alt=""> <p>sObj.plotAllVariability assumes that all the data can be considered together. It also allows more custimization of the plotting properties. Example we can specify a different faceColor by passing the color in the same format as plot. Assymetric confidence intervals can be specified. If the CIs are single numbers, they specify the multiple of the standard deviations to use (default is 1). If they are the same length as the SignalObj, then it specifies the actual values above and/or below the mean at each point in time. If ciLower is not specifed, it is assumed to equal ciUpper. For convinience the inputs to plotAllVariability are: s.plotAllVariability(sObj,faceColor,linewidth,ciUpper,ciLower)</p><pre class="codeinput">figure;
+<span class="comment">%blue color for CI patch;</span>
+subplot(3,1,1); s.plotAllVariability(<span class="string">'b'</span>);
+<span class="comment">%green color and lineWidth=2;</span>
+subplot(3,1,2); s.plotAllVariability(<span class="string">'g'</span>,2);
+<span class="comment">%cyan, lineWidth=3, 2*std for top CI, and 1*std for bottom CI</span>
+subplot(3,1,3); s.plotAllVariability(<span class="string">'c'</span>,3,2,1);
+</pre><img vspace="5" hspace="5" src="SignalObjExamples_17.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.13<br></p></div><!--
+##### SOURCE BEGIN #####
+%% Using the SignalObj Class
+% In this file we will give several examples of how the SignalObj can be
+% used. A description of all of the properties of SignalObj can be found
+% at: <matlab:doc('SignalObj') SignalObj Class Definition>
+
+
+%% Example 1: Defining and Plotting Signals
+% Define a two dimensional SignalObj, $s$, representing two voltage signals that were
+% $v1$ and $v2$ aquired simultaneously at 100Hz. Another SignalObj, $s1$ ,
+% is created from just $v1$. Both signals are plotted.
+close all;
+sampleRate=100; t=0:1/sampleRate:10; freq=2; 
+v1=sin(2*pi*freq*t); v2=sin(v1.^2); v=[v1;v2];
+s=SignalObj(t,v,'Voltage','time','s','V',{'v1','v2'});
+s1=SignalObj(t,v1,'Voltage','time','s','V',{'v1'});
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s1.plot;
+
+%%
+% Note how the legend show the appropriate labels. If the dataLabels had
+% not been set, the legend would not appear.
+%
+% Instead of defining a new SignalObj, $s1$, the $v2$ data in $s$ can be
+% masked away and then the plot will only show the data of interest. It is
+% important to note that setMask is used to set which signals should remain
+% visible. Also note that when a data is masked, converting the SignalObj
+% to a Matrix only returns the visible data. A new SignalObj can be 
+% created from the orignal SignalObj which only contains the data of interest.
+% Lastly, the all labeled components can be accessed independently via the
+% vars subfield.
+
+subplot(2,1,1); s.setMask({'v1'}); s.plot; s.resetMask;
+subplot(2,1,2); s.setMask({'v2'}); s.plot; size(s.dataToMatrix)
+s.resetMask;
+
+
+%%
+% _Note about repeated dataLabels_
+% It is possible to use SignalObj's to store different realizations of the
+% same physical signal. For example, independent measurements of
+% $v1$ at two distinct experiments. 
+s=SignalObj(t,[v1; v1; v2] ,'Voltage','time','s','V',{'v1','v1','v2'});
+s.getSubSignal({'v1'}); %returns a SignalObj with both realizations of v1
+figure 
+s.getSubSignal({'v1'}).plot;
+
+%% Example 2: Changing Signal Properties
+figure
+s=SignalObj(t,v,'Voltage','time','s','V',{'v1','v2'});
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s.setXlabel('distance'); s.setXUnits('cm'); s.plot;
+
+%%
+figure
+subplot(2,1,1); s.setDataLabels({'r1','r2'}); s.setYLabel('Temperature'); s.setYUnits('C'); s.plot;
+subplot(2,1,2); s.setMaxTime(14); s.setMinTime(-2); s.plot;
+
+s.setName('testName'); %should work since we are using a method 
+if(strcmp(s.name,'testName'))
+    fprintf('Name successfully set \n');
+else
+    fprintf('Could not set name \n');
+end
+% s.name = 'testName'; %returns an error because the field is private;
+
+%%
+% setMaxTime and setMinTime can be given a second parameter, holdVals, that
+% determines whether the endpoint values are kept or set to zero if the
+% times being set are outside the original window of the data.
+%
+% Plotting properties for individual components of the data can be set via
+% the when plotting or by call the setPlotProps method.
+
+figure
+s=SignalObj(t,v,'Voltage','time','s','V',{'v1','v2'});
+subplot(2,1,1); s.plot('v1',{{' ''k'' '}});
+subplot(2,1,2); s.plot('all',{{' ''k'' '},{' ''-.g'' '}});
+
+%%
+figure
+subplot(2,1,1); s.plot({'v1','v2'});
+subplot(2,1,2); s.plot({'v1','v2'},{{' ''k'' '},{' ''-.g'' '}});
+
+%% Example 3:  Resampling and Windowing SignalObjs
+figure
+s=SignalObj(t,v,'Voltage','time','s','V',{'v1','v2'});
+s1=s.resample(.1*sampleRate);
+subplot(2,1,1); s.plot; 
+subplot(2,1,2); s1.plot;
+
+%%
+figure
+subplot(2,1,1); s.getSigInTimeWindow(-2,3).plot; 
+subplot(2,1,2); s.plot;
+%% Example 4: SignalObj Mathematical Operations
+s=SignalObj(t,v,'Voltage','time','s','V',{'v1','v2'});
+figure
+s2=mean(s); %mean of each dimension;
+s5=s-s2;  %zero mean version of s; 
+s5.plot;
+
+figure
+s2=mean(s,2); %mean of s across its dimensions;
+s2.plot;
+
+%%
+% SignalObj's can be added, subtracted, and multiplied.\
+figure
+s4=2*s+s5;
+s4.plot;
+
+figure
+subplot(3,1,1);
+s.integral.plot;
+subplot(3,1,2);
+s.derivative.plot;
+subplot(3,1,3);
+s6=s.integral.derivative-s; %should equal zero;
+s6.plot;
+
+%% Example 5: Spectra
+s=SignalObj(t,v,'Voltage','time','s','V',{'v1','v2'});
+figure;
+s.MTMspectrum;
+
+figure
+s.periodogram;
+
+%% Example 6: View signal variability
+% We can look at the variability of signals with regards to their labels or
+% or irrespective of their labels. Lets create a SignalObj that has several
+% components, and some noise. We mislabel two signals to add alot of
+% variability for illustration
+sampleRate=5000; t=0:1/sampleRate:1; t=t'; freq=2; 
+v1=sin(2*pi*freq*t); v2=sin(v1.^2);
+noise=.1*randn(length(t),6); %gaussian random noise
+data= [v1 v2 v2 v1 v2 v1] + noise;
+s=SignalObj(t,data,'Voltage','time','s','V',{'v1','v2','v2','v1','v1','v2'});
+figure;
+subplot(2,1,1); s.plot;
+subplot(2,1,2); s.plotAllVariability; %disregards labels;
+s.plotVariability; %creates two figures, one for 'v1' and one for 'v2'
+
+%%
+% sObj.plotAllVariability assumes that all the data can be considered together.
+% It also allows more custimization of the plotting properties.
+% Example we can specify a different faceColor by passing the color in the
+% same format as plot. Assymetric confidence intervals can be specified. If
+% the CIs are single numbers, they specify the multiple of the standard
+% deviations to use (default is 1). If they are the same length as the
+% SignalObj, then it specifies the actual values above and/or below the mean
+% at each point in time. If ciLower is not specifed, it is assumed to equal
+% ciUpper. For convinience the inputs to plotAllVariability are:
+% s.plotAllVariability(sObj,faceColor,linewidth,ciUpper,ciLower)
+figure;
+%blue color for CI patch;
+subplot(3,1,1); s.plotAllVariability('b');    
+%green color and lineWidth=2;
+subplot(3,1,2); s.plotAllVariability('g',2);  
+%cyan, lineWidth=3, 2*std for top CI, and 1*std for bottom CI
+subplot(3,1,3); s.plotAllVariability('c',3,2,1);
+
+
+##### SOURCE END #####
+--></body></html>

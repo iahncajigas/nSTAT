@@ -1,0 +1,128 @@
+%% miniature excitatory post-synaptic currents (mEPSCs) 
+% Data from Marnie Phillips <marnie.a.phillips@gmail.com>
+
+%Iahn Cajigas 03/01/2011
+%% Data Description
+% epsc2.txt:   
+% Event times of selected, constant rate, miniature excitatory 
+% post-synaptic currents (mEPSCs) in 0mM magnesium condition]
+% 
+% epsc2_TRS_autocorr.fig   
+% Matlab plots of the time-rescaled values compared to exponential model, 
+% and autocorrelation using time-rescaled values.  
+% Event selection criteria were:  amplitude > 6.06pA, 10-90% rise 
+% time < 20ms, Groups: 0 and 255]
+% 
+% washout1.txt  
+% Variable rate recording:  Event times of selected events, beginning 
+% approximately 260 seconds after magnesium is first removed.
+% 
+% washout2.txt
+% Event times of selected events from the same recording, beginning 
+% 745 seconds after magnesium is first removed
+% 
+% Figure-3.jpg
+% The figure from our paper showing that magnesium removal increases 
+% the rate, but not amplitude, of synaptic miniature EPSCs.
+% 
+% Column headers in the text files explain what each column represents, 
+% let me know if you have any questions or need more data,
+% 
+% * Event selection criteria for the "washout1" and "washout2" condition were:
+% 
+% Amplitude > 10pA
+% 10-90% rise time < 20ms
+% 
+% Iahn, you should know that for this washout experiment, the recording 
+% duration was so long, and there were so many events, that the minimum 
+% amplitude threshold was conservative.  
+% 
+% The mean RMS noise was only 1.36pA, and a usual threshold would be 
+% 5*RMS = 6.8pA.  Also, not all concurrent events were counted (ie, events 
+% which interrupt other events by occurring in the decay phase of a 
+% preceding event).
+
+
+%% Constant Magnesium Concentration - Constant rate poisson
+    epsc2 = importdata('epsc2.txt');
+    sampleRate = 1000;
+    spikeTimes = epsc2.data(:,1)*1/sampleRate; %in seconds
+    nst = nspikeTrain(spikeTimes);
+    time = 0:(1/sampleRate):nst.maxTime;
+
+    % Define Covariates for the analysis
+    baseline = Covariate(time,ones(length(time),1),'Baseline','time','s','',{'mu'});
+    covarColl = CovColl({baseline});
+
+    % Create the trial structure
+    spikeColl = nstColl(nst);
+    trial     = Trial(spikeColl,covarColl);
+    
+
+    % Define how we want to analyze the data
+    tc{1} = TrialConfig({{'Baseline','mu'}},sampleRate,[]); tc{1}.setName('Constant Baseline');
+    tcc = ConfigColl(tc);
+    
+    % Perform Analysis (Commented to since data already saved)
+    results =Analysis.RunAnalysisForAllNeurons(trial,tcc,0);
+    results.plotResults;
+    
+ 
+ %% Varying Magnesium Concentration - Piecewise Constant rate poisson
+    clear all;
+
+    washout1 = importdata('washout1.txt');
+    washout2 = importdata('washout2.txt');
+    
+    sampleRate  = 1000;
+    % Magnesium removed at t=0
+    spikeTimes1 = 260+washout1.data(:,2)*1/sampleRate; %in seconds
+    spikeTimes2 = sort(washout2.data(:,2))*1/sampleRate + 745;%in seconds
+    nst = nspikeTrain([spikeTimes1; spikeTimes2]);
+    time = 260:(1/sampleRate):nst.maxTime;
+
+    nst.plot;
+    %%
+    % Visual inspection of the spike train is used to pick three regions
+    % where the firing rate appears to be different. Here we do not
+    % estimate where these transitions happen but pick times in an ad-hoc
+    % manner. 
+    
+    % Define Covariates for the analysis
+    
+    timeInd1 =find(time<495,1,'last');
+    timeInd2 =find(time<765,1,'last');
+    constantRate = ones(length(time),1);
+    rate1 = zeros(length(time),1); rate1(1:timeInd1)=1;
+    rate2 = zeros(length(time),1); rate2((timeInd1+1):timeInd2)=1;
+    rate3 = zeros(length(time),1); rate3((timeInd2+1):end)=1;
+    baseline = Covariate(time,[constantRate,rate1, rate2, rate3],'Baseline','time','s','',{'\mu','\mu_{1}','\mu_{2}','\mu_{3}'});
+    covarColl = CovColl({baseline});
+
+    % Create the trial structure
+    spikeColl = nstColl(nst);
+    trial     = Trial(spikeColl,covarColl);
+    
+    %30ms history in logarithmic spacing (chosen after using
+    %Analysis.computeHistLagForAll for various window lengths
+    maxWindow=.3; numWindows=20; 
+    windowTimes =unique(round([0 logspace(log10(delta),...
+    log10(maxWindow),numWindows)]*sampleRate)./sampleRate);
+    windowTimes = windowTimes(1:11);
+    % Define how we want to analyze the data
+    tc{1} = TrialConfig({{'Baseline','\mu'}},sampleRate,[]); tc{1}.setName('Constant Baseline');
+    tc{2} = TrialConfig({{'Baseline','\mu_{1}','\mu_{2}','\mu_{3}'}},sampleRate,[]); tc{2}.setName('Diff Baseline');
+    tc{3} = TrialConfig({{'Baseline','\mu_{1}','\mu_{2}','\mu_{3}'}},sampleRate,windowTimes); tc{3}.setName('Diff Baseline+Hist');
+    
+    tcc = ConfigColl(tc);
+    
+    % Perform Analysis (Commented to since data already saved)
+    results =Analysis.RunAnalysisForAllNeurons(trial,tcc,0);
+    results.plotResults;
+    Summary = FitResSummary(results);
+    
+    %%
+    
+    
+    
+    

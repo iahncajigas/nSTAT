@@ -1,0 +1,398 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>Hybrid Point Process Filter Example</title><meta name="generator" content="MATLAB 7.11"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2011-05-06"><meta name="DC.source" content="HybridFilterExample.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>Hybrid Point Process Filter Example</h1><!--introduction--><p>This example is based on an implementation of the Hybrid Point Process filter described in <i>General-purpose filter design for neural prosthetic devices</i> by Srinivasan L, Eden UT, Mitter SK, Brown EN in J Neurophysiol. 2007 Oct, 98(4):2456-75.</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Problem Statement</a></li><li><a href="#3">Generated Simulated Arm Reach</a></li><li><a href="#4">Simulate Neural Firing</a></li><li><a href="#5">Decode the x-y trajectory</a></li><li><a href="#6">Plot the results</a></li></ul></div><h2>Problem Statement<a name="1"></a></h2><p>Suppose that a process of interest can be modeled as consisting of several discrete states where the evolution of the system under each state can be modeled as a linear state space model. The observations of both the state and the continuous dynamics are not direct, but rather observed through how the continuous and discrete states affect the firing of a population of neurons. The goal of the hybrid filter is to estimate both the continuous dynamics and the underlying system state from only the neural population firing (point process observations).</p><p>To illustrate the use of this filter, we consider a reaching task. We assume two underlying system states s=1="Not Moving"=NM and s=2="Moving"=M. Under the "Not Moving" the position of the arm remain constant, whereas in the "Moving" state, the position and velocities evolved based on the arm acceleration that is modeled as a gaussian white noise process.</p><p>Under both the "Moving" and "Not Moving" states, the arm evolution state vector is</p><p><img src="HybridFilterExample_eq06211.png" alt="$${\bf{x}} = {[x,y,{v_x},{v_y},{a_x},{a_y}]^T}$$"></p><h2>Generated Simulated Arm Reach<a name="3"></a></h2><pre class="codeinput">clear <span class="string">all</span>;
+close <span class="string">all</span>;
+delta=0.001;
+Tmax=2;
+time=0:delta:Tmax;
+A{2} = [1 0 delta 0     delta^2/2   0;
+        0 1 0     delta 0           delta^2/2;
+        0 0 1     0     delta       0;
+        0 0 0     1     0           delta;
+        0 0 0     0     1           0;
+        0 0 0     0     0           1];
+
+A{1} = [1 0 0 0 0 0;
+        0 1 0 0 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0];
+Px0{2} =.1*eye(6,6);
+Px0{1} =.1*eye(6,6);
+minCovVal = 1e-7;
+Q{2}=[minCovVal     0   0     0   0       0;
+      0       minCovVal 0     0   0       0;
+      0       0   minCovVal   0   0       0;
+      0       0   0     minCovVal 0       0;
+      0       0   0     0   1      0;
+      0       0   0     0   0       1];
+Q{1}=minCovVal*eye(6,6);
+
+
+
+mstate = zeros(1,length(time));
+ind{1}=1:6;
+ind{2}=1:6;
+
+<span class="comment">% Acceleration model</span>
+X=zeros(size(A{1},1),length(time));
+p_ij = [.998 .002; .002 .998];
+<span class="keyword">for</span> i = 1:length(time)
+
+    <span class="keyword">if</span>(i==1)
+        mstate(i) = 1+(rand(1,1)&gt;.5);
+    <span class="keyword">else</span>
+       <span class="keyword">if</span>(rand(1,1)&lt;p_ij(1,1))
+            mstate(i) = mstate(i-1);
+       <span class="keyword">else</span>
+           <span class="keyword">if</span>(mstate(i-1)==1)
+               mstate(i) = 2;
+           <span class="keyword">else</span>
+               mstate(i) = 1;
+           <span class="keyword">end</span>
+       <span class="keyword">end</span>
+    <span class="keyword">end</span>
+    st = mstate(i);
+    X(ind{st},i+1) = A{st}*X(ind{st},i) + sqrt(diag(Q{st})).*randn(6,1);
+
+
+<span class="keyword">end</span>
+
+figure;
+subplot(2,2,1);
+plot(time,mstate,<span class="string">'k'</span>); axis <span class="string">tight</span>; v=axis; axis([v(1) v(2) 0 3]);
+xlabel(<span class="string">'time'</span>); ylabel(<span class="string">'state'</span>);
+set(gca,<span class="string">'YTick'</span>,[1 2],<span class="string">'YTickLabel'</span>,{<span class="string">'NM'</span>,<span class="string">'M'</span>})
+subplot(2,2,3);
+plot(time,X(1:2,1:end-1)); axis <span class="string">tight</span>; xlabel(<span class="string">'time [s]'</span>); ylabel(<span class="string">'Movement [m]'</span>);legend(<span class="string">'x(t)'</span>,<span class="string">'y(t)'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+subplot(2,2,[2 4]);
+plot(X(1,:),X(2,:)); xlabel(<span class="string">'X [m]'</span>); ylabel(<span class="string">'Y [m]'</span>);  hold <span class="string">on</span>;
+h1=plot(X(1,1),X(2,1),<span class="string">'ro'</span>,<span class="string">'MarkerSize'</span>,10);
+h2=plot(X(1,end),X(2,end),<span class="string">'bo'</span>,<span class="string">'MarkerSize'</span>,10);
+legend([h1 h2],<span class="string">'Start'</span>,<span class="string">'Finish'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+</pre><img vspace="5" hspace="5" src="HybridFilterExample_01.png" alt=""> <h2>Simulate Neural Firing<a name="4"></a></h2><p>We simulate a population of neurons that fire in response to the movement velocity (x and y coorinates)</p><pre class="codeinput">numCells =100;
+coeffs = [(.1*randn(numCells,1)-4) .0*randn(numCells,2) 4*randn(numCells,2) .002*randn(numCells,2)];
+
+
+dataMat = [ones(size(X,2)-1,1),X(:,1:end-1)'];
+<span class="comment">% Generate M1 cells</span>
+clear <span class="string">lambda</span> <span class="string">tempSpikeColl</span> <span class="string">lambdaCIF</span> <span class="string">n</span>;
+matlabpool <span class="string">open</span>;
+ <span class="keyword">parfor</span> i=1:numCells
+     tempData  = exp(dataMat*coeffs(i,:)');
+     lambdaData = tempData./(1+tempData);
+     lambda{i}=Covariate(time,lambdaData./delta, <span class="string">'\Lambda(t)'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'Hz'</span>,{strcat(<span class="string">'\lambda_{'</span>,num2str(i),<span class="string">'}'</span>)},{{<span class="string">' ''b'', ''LineWidth'' ,2'</span>}});
+     maxTimeRes = 0.001;
+     tempSpikeColl{i} = CIF.simulateCIFByThinning(lambda{i},1,[]);
+     n{i} = tempSpikeColl{i}.getNST(1);
+     n{i}.setName(num2str(i));
+     lambdaCIF{i} = CIF(coeffs(i,:),{<span class="string">'1'</span>,<span class="string">'x'</span>,<span class="string">'y'</span>,<span class="string">'vx'</span>,<span class="string">'vy'</span>,<span class="string">'ax'</span>,<span class="string">'ay'</span>},{<span class="string">'x'</span>,<span class="string">'y'</span>,<span class="string">'vx'</span>,<span class="string">'vy'</span>,<span class="string">'ax'</span>,<span class="string">'ay'</span>},<span class="string">'binomial'</span>);
+ <span class="keyword">end</span>
+
+
+figure;
+subplot(2,1,1);
+plot(time,mstate,<span class="string">'k'</span>); axis([0 Tmax 0 3]);
+set(gca,<span class="string">'YTick'</span>,[1 2],<span class="string">'YTickLabel'</span>,{<span class="string">'NM'</span>,<span class="string">'M'</span>})
+xlabel(<span class="string">'time'</span>); ylabel(<span class="string">'state'</span>);
+
+subplot(2,1,2);
+spikeColl = nstColl(n);
+spikeColl.plot;
+set(gca,<span class="string">'ytick'</span>,[]);
+
+
+ matlabpool <span class="string">close</span>;
+</pre><pre class="codeoutput">Starting matlabpool using the 'local' configuration ... connected to 4 labs.
+Sending a stop signal to all the labs ... stopped.
+</pre><img vspace="5" hspace="5" src="HybridFilterExample_02.png" alt=""> <h2>Decode the x-y trajectory<a name="5"></a></h2><pre class="codeinput"><span class="comment">% Enforce that the maximum time resolution is delta</span>
+spikeColl.resample(1/delta);
+dN = spikeColl.dataToMatrix;
+dN(dN&gt;1)=1; <span class="comment">%Avoid more than 1 spike per bin.</span>
+
+<span class="comment">% Starting states are equally probable</span>
+Mu0=.5*ones(size(p_ij,1),1);
+
+<span class="comment">% Run the Hybrid Point Process Filter</span>
+[S_est, X_est, W_est, MU_est, X_s, W_s,pNGivenS]=CIF.PPHybridFilter(A, Q, p_ij,Mu0,Px0, dN',lambdaCIF);
+</pre><h2>Plot the results<a name="6"></a></h2><p>close all;</p><pre class="codeinput">figure; subplot(2,2,1);plot(time,mstate,<span class="string">'k'</span>,time,S_est,<span class="string">'r-.'</span>); axis <span class="string">tight</span>; v=axis; axis([v(1) v(2) 0 3]);
+        set(gca,<span class="string">'xtick'</span>,[],<span class="string">'YTick'</span>,[1 2],<span class="string">'YTickLabel'</span>,{<span class="string">'NM'</span>,<span class="string">'M'</span>});
+        ylabel(<span class="string">'state'</span>); l=legend(<span class="string">'$s(t)$'</span>,<span class="string">'$\hat{s}(t)$'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+        set(l, <span class="string">'Interpreter'</span>, <span class="string">'latex'</span>);
+
+        subplot(2,2,3);plot(time,X_est(1:2,:)',<span class="string">'-.'</span>); hold <span class="string">on</span>;plot(time,X(1:2,1:end-1)'); axis <span class="string">tight</span>;
+        xlabel(<span class="string">'time [s]'</span>); ylabel(<span class="string">'[m]'</span>);l=legend(<span class="string">'$\hat{x}(t)$'</span>,<span class="string">'$\hat{y}(t)$'</span>,<span class="string">'x(t)'</span>,<span class="string">'y(t)'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+        set(l, <span class="string">'Interpreter'</span>, <span class="string">'latex'</span>)
+
+        subplot(2,2,[2 4]); h1=plot(X_est(1,:)',X_est(2,:)',<span class="string">'r-.'</span>,X(1,1:end-1)',X(2,1:end-1)',<span class="string">'k'</span>); hold <span class="string">on</span>;
+        xlabel(<span class="string">'X [m]'</span>); ylabel(<span class="string">'Y [m]'</span>); plot(X(1,1),X(2,1),<span class="string">'ro'</span>,<span class="string">'MarkerSize'</span>,10); plot(X(1,end),X(2,end),<span class="string">'bo'</span>,<span class="string">'MarkerSize'</span>,10);
+        legend(h1,<span class="string">'Estimate'</span>,<span class="string">'Actual'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+
+
+figure;
+subplot(2,1,1);plot(time,mstate,<span class="string">'k'</span>,time,S_est,<span class="string">'r-.'</span>);
+title(<span class="string">'Estimated vs. Actual State and State Probabilities'</span>);
+axis <span class="string">tight</span>; v=axis; axis([v(1) v(2) 0 3]);
+set(gca,<span class="string">'xtick'</span>,[],<span class="string">'YTick'</span>,[1 2],<span class="string">'YTickLabel'</span>,{<span class="string">'NM'</span>,<span class="string">'M'</span>});
+ylabel(<span class="string">'state'</span>);
+l=legend(<span class="string">'$s(t)$'</span>,<span class="string">'$\hat{s}(t)$'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+set(l, <span class="string">'Interpreter'</span>, <span class="string">'latex'</span>);
+
+
+subplot(2,1,2); plot(time,MU_est); axis <span class="string">tight</span>;
+xlabel(<span class="string">'time'</span>); ylabel(<span class="string">'P(s(t)=i | data)'</span>);
+legend(<span class="string">'P(s(t)=1 | data)'</span>,<span class="string">'P(s(t)=2 | data)'</span>,<span class="string">'Location'</span>,<span class="string">'Best'</span>);
+</pre><img vspace="5" hspace="5" src="HybridFilterExample_03.png" alt=""> <img vspace="5" hspace="5" src="HybridFilterExample_04.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.11<br></p></div><!--
+##### SOURCE BEGIN #####
+%% Hybrid Point Process Filter Example 
+% This example is based on an implementation of the Hybrid Point Process
+% filter described in _General-purpose filter design for neural prosthetic devices_ 
+% by Srinivasan L, Eden UT, Mitter SK, Brown EN in J Neurophysiol. 2007 Oct, 98(4):2456-75. 
+%
+
+%% Problem Statement
+% Suppose that a process of interest can be modeled as consisting of
+% several discrete states where the evolution of the system under each
+% state can be modeled as a linear state space model. The observations of
+% both the state and the continuous dynamics are not direct, but rather
+% observed through how the continuous and discrete states affect the firing
+% of a population of neurons. The goal of the hybrid filter is to estimate
+% both the continuous dynamics and the underlying system state from only
+% the neural population firing (point process observations).
+%
+% To illustrate the use of this filter, we consider a reaching task. We
+% assume two underlying system states s=1="Not Moving"=NM and s=2="Moving"=M.
+% Under the "Not Moving" the position of the arm remain constant,
+% whereas in the "Moving" state, the position and velocities evolved based
+% on the arm acceleration that is modeled as a gaussian white noise
+% process.
+%
+% Under both the "Moving" and "Not Moving" states, the arm evolution state
+% vector is 
+%%
+% 
+% $${\bf{x}} = {[x,y,{v_x},{v_y},{a_x},{a_y}]^T}$$
+% 
+
+%% Generated Simulated Arm Reach
+
+clear all;
+close all;
+delta=0.001;
+Tmax=2;
+time=0:delta:Tmax;
+A{2} = [1 0 delta 0     delta^2/2   0;
+        0 1 0     delta 0           delta^2/2;
+        0 0 1     0     delta       0;
+        0 0 0     1     0           delta;
+        0 0 0     0     1           0;
+        0 0 0     0     0           1];
+        
+A{1} = [1 0 0 0 0 0;
+        0 1 0 0 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0;
+        0 0 0 0 0 0];
+Px0{2} =.1*eye(6,6);
+Px0{1} =.1*eye(6,6);
+minCovVal = 1e-7;
+Q{2}=[minCovVal     0   0     0   0       0;
+      0       minCovVal 0     0   0       0;
+      0       0   minCovVal   0   0       0;
+      0       0   0     minCovVal 0       0;
+      0       0   0     0   1      0;
+      0       0   0     0   0       1];
+Q{1}=minCovVal*eye(6,6);
+
+
+
+mstate = zeros(1,length(time));
+ind{1}=1:6;
+ind{2}=1:6;
+
+% Acceleration model
+X=zeros(size(A{1},1),length(time));
+p_ij = [.998 .002; .002 .998];
+for i = 1:length(time)
+    
+    if(i==1)
+        mstate(i) = 1+(rand(1,1)>.5);
+    else
+       if(rand(1,1)<p_ij(1,1))
+            mstate(i) = mstate(i-1);
+       else
+           if(mstate(i-1)==1)
+               mstate(i) = 2;
+           else
+               mstate(i) = 1;
+           end
+       end
+    end
+    st = mstate(i);
+    X(ind{st},i+1) = A{st}*X(ind{st},i) + sqrt(diag(Q{st})).*randn(6,1);
+
+
+end
+
+figure;
+subplot(2,2,1);
+plot(time,mstate,'k'); axis tight; v=axis; axis([v(1) v(2) 0 3]);
+xlabel('time'); ylabel('state');
+set(gca,'YTick',[1 2],'YTickLabel',{'NM','M'})
+subplot(2,2,3);
+plot(time,X(1:2,1:end-1)); axis tight; xlabel('time [s]'); ylabel('Movement [m]');legend('x(t)','y(t)','Location','Best');
+subplot(2,2,[2 4]);
+plot(X(1,:),X(2,:)); xlabel('X [m]'); ylabel('Y [m]');  hold on;
+h1=plot(X(1,1),X(2,1),'ro','MarkerSize',10);
+h2=plot(X(1,end),X(2,end),'bo','MarkerSize',10);
+legend([h1 h2],'Start','Finish','Location','Best');
+
+%% Simulate Neural Firing
+% We simulate a population of neurons that fire in response to the movement
+% velocity (x and y coorinates) 
+
+
+numCells =100;
+coeffs = [(.1*randn(numCells,1)-4) .0*randn(numCells,2) 4*randn(numCells,2) .002*randn(numCells,2)];
+
+
+dataMat = [ones(size(X,2)-1,1),X(:,1:end-1)'];
+% Generate M1 cells
+clear lambda tempSpikeColl lambdaCIF n;
+matlabpool open;
+ parfor i=1:numCells
+     tempData  = exp(dataMat*coeffs(i,:)');
+     lambdaData = tempData./(1+tempData);
+     lambda{i}=Covariate(time,lambdaData./delta, '\Lambda(t)','time','s','Hz',{strcat('\lambda_{',num2str(i),'}')},{{' ''b'', ''LineWidth'' ,2'}});
+     maxTimeRes = 0.001;
+     tempSpikeColl{i} = CIF.simulateCIFByThinning(lambda{i},1,[]);
+     n{i} = tempSpikeColl{i}.getNST(1);
+     n{i}.setName(num2str(i));    
+     lambdaCIF{i} = CIF(coeffs(i,:),{'1','x','y','vx','vy','ax','ay'},{'x','y','vx','vy','ax','ay'},'binomial');
+ end
+ 
+
+figure;
+subplot(2,1,1);
+plot(time,mstate,'k'); axis([0 Tmax 0 3]);
+set(gca,'YTick',[1 2],'YTickLabel',{'NM','M'})
+xlabel('time'); ylabel('state');
+
+subplot(2,1,2);
+spikeColl = nstColl(n);
+spikeColl.plot;
+set(gca,'ytick',[]);
+
+ 
+ matlabpool close;
+%% Decode the x-y trajectory
+
+% Enforce that the maximum time resolution is delta
+spikeColl.resample(1/delta);
+dN = spikeColl.dataToMatrix; 
+dN(dN>1)=1; %Avoid more than 1 spike per bin.
+ 
+% Starting states are equally probable
+Mu0=.5*ones(size(p_ij,1),1);
+
+% Run the Hybrid Point Process Filter 
+[S_est, X_est, W_est, MU_est, X_s, W_s,pNGivenS]=CIF.PPHybridFilter(A, Q, p_ij,Mu0,Px0, dN',lambdaCIF);
+
+%% Plot the results
+% close all;
+figure; subplot(2,2,1);plot(time,mstate,'k',time,S_est,'r-.'); axis tight; v=axis; axis([v(1) v(2) 0 3]);
+        set(gca,'xtick',[],'YTick',[1 2],'YTickLabel',{'NM','M'});
+        ylabel('state'); l=legend('$s(t)$','$\hat{s}(t)$','Location','Best');
+        set(l, 'Interpreter', 'latex');
+        
+        subplot(2,2,3);plot(time,X_est(1:2,:)','-.'); hold on;plot(time,X(1:2,1:end-1)'); axis tight;
+        xlabel('time [s]'); ylabel('[m]');l=legend('$\hat{x}(t)$','$\hat{y}(t)$','x(t)','y(t)','Location','Best');
+        set(l, 'Interpreter', 'latex')
+                
+        subplot(2,2,[2 4]); h1=plot(X_est(1,:)',X_est(2,:)','r-.',X(1,1:end-1)',X(2,1:end-1)','k'); hold on;
+        xlabel('X [m]'); ylabel('Y [m]'); plot(X(1,1),X(2,1),'ro','MarkerSize',10); plot(X(1,end),X(2,end),'bo','MarkerSize',10);
+        legend(h1,'Estimate','Actual','Location','Best');
+        
+
+figure;      
+subplot(2,1,1);plot(time,mstate,'k',time,S_est,'r-.'); 
+title('Estimated vs. Actual State and State Probabilities');
+axis tight; v=axis; axis([v(1) v(2) 0 3]);
+set(gca,'xtick',[],'YTick',[1 2],'YTickLabel',{'NM','M'});
+ylabel('state');
+l=legend('$s(t)$','$\hat{s}(t)$','Location','Best');
+set(l, 'Interpreter', 'latex');
+
+
+subplot(2,1,2); plot(time,MU_est); axis tight;
+xlabel('time'); ylabel('P(s(t)=i | data)');
+legend('P(s(t)=1 | data)','P(s(t)=2 | data)','Location','Best');
+
+
+##### SOURCE END #####
+--></body></html>

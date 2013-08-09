@@ -1,0 +1,548 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>HIPPOCAMPAL PLACE CELL - RECEPTIVE FIELD ESTIMATION</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-03-02"><meta name="DC.source" content="HippocampalPlaceCellExample.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>HIPPOCAMPAL PLACE CELL - RECEPTIVE FIELD ESTIMATION</h1><!--introduction--><p>Estimation of receptive fields of neurons is a very common data analysis problem in neuroscience. Here we use the nSTAT software to perform an estimation of the receptive fields of hippocampal place cells using a bivariate Gaussian model and Zernike polynomials. The number of zernike polynomials is based on "An Analysis of Hippocampal Spatio-Temporal Representations Using a Bayesian Algorithm for Neural Spike Train Decoding" Barbieri et. al 2005. The data used herein in was provided by Dr. Ricardo Barbieri on 2/28/2011.</p><p><b>Author</b>: Iahn Cajigas</p><p><b>Date</b>: 3/1/2011</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#2">Example Data</a></li><li><a href="#3">Analyze All Cells</a></li><li><a href="#4">View Summary Statistics</a></li><li><a href="#5">Visualize the results</a></li></ul></div><pre class="codeinput">close <span class="string">all</span>
+</pre><h2>Example Data<a name="2"></a></h2><p>The x and y coordinates of a freely foraging rat in a circular environment (70cm in diameter and 30cm high walls) and a fixed visual cue. The x and y coordinates at the time when a spike was observed are marked in red. The position coordinates have been normalized to be between -1 and 1 to allow to simplify the analysis.</p><pre class="codeinput">    load(strcat(<span class="string">'PlaceCellDataAnimal1.mat'</span>));
+    exampleCell = 25;
+    figure(1);
+    plot(x,y,<span class="string">'b'</span>,neuron{exampleCell}.xN,neuron{exampleCell}.yN,<span class="string">'r.'</span>);
+    xlabel(<span class="string">'x'</span>); ylabel(<span class="string">'y'</span>);
+    title([<span class="string">'Animal#1, Cell#'</span> num2str(exampleCell)]);
+</pre><img vspace="5" hspace="5" src="HippocampalPlaceCellExample_01.png" alt=""> <h2>Analyze All Cells<a name="3"></a></h2><pre class="codeinput"> numAnimals =2;
+<span class="keyword">for</span> n=1:numAnimals
+    <span class="comment">% load the data</span>
+    clear <span class="string">x</span> <span class="string">y</span> <span class="string">neuron</span> <span class="string">time</span> <span class="string">nst</span> <span class="string">tc</span> <span class="string">tcc</span> <span class="string">z</span>;
+    load(strcat(<span class="string">'PlaceCellDataAnimal'</span>,num2str(n),<span class="string">'.mat'</span>));
+
+    <span class="comment">% Create the spikeTrains for each cell</span>
+    <span class="keyword">for</span> i=1:length(neuron)
+        nst{i} = nspikeTrain(neuron{i}.spikeTimes);
+    <span class="keyword">end</span>
+
+
+    <span class="comment">% Convert to polar coordinates</span>
+    [theta,r] = cart2pol(x,y);
+
+
+    <span class="comment">% Evaluate the Zernike Polynomials</span>
+    <span class="comment">% Number of polynomials from "An Analysis of Hippocampal</span>
+    <span class="comment">% Spatio-Temporal Representations Using a Bayesian Algorithm for Neural</span>
+    <span class="comment">% Spike Train Decoding" Barbieri et. al 2005</span>
+    cnt=0;
+    <span class="keyword">for</span> l=0:3
+       <span class="keyword">for</span> m=-l:l
+           <span class="keyword">if</span>(~any(mod(l-m,2))) <span class="comment">% otherwise the polynomial = 0</span>
+            cnt = cnt+1;
+            z(:,cnt) = zernfun(l,m,r,theta,<span class="string">'norm'</span>);
+            <span class="comment">% zernfun by Paul Fricker</span>
+            <span class="comment">% http://www.mathworks.com/matlabcentral/fileexchange/7687</span>
+           <span class="keyword">end</span>
+       <span class="keyword">end</span>
+    <span class="keyword">end</span>
+
+    <span class="comment">% Data sampled at 30 Hz but just to be sure</span>
+    delta=min(diff(time));
+    sampleRate = round(1/delta);
+
+    <span class="comment">% Define Covariates for the analysis</span>
+    baseline = Covariate(time,ones(length(x),1),<span class="string">'Baseline'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">''</span>,<span class="keyword">...</span>
+                        {<span class="string">'mu'</span>});
+    zernike  = Covariate(time,z,<span class="string">'Zernike'</span>,<span class="string">'time'</span>,<span class="string">'s'</span>,<span class="string">'m'</span>,{<span class="string">'z1'</span>,<span class="string">'z2'</span>,<span class="string">'z3'</span>,<span class="keyword">...</span>
+                        <span class="string">'z4'</span>,<span class="string">'z5'</span>,<span class="string">'z6'</span>,<span class="string">'z7'</span>,<span class="string">'z8'</span>,<span class="string">'z9'</span>,<span class="string">'z10'</span>});
+    gaussian = Covariate(time,[x y x.^2 y.^2 x.*y],<span class="string">'Gaussian'</span>,<span class="string">'time'</span>,<span class="keyword">...</span>
+                        <span class="string">'s'</span>,<span class="string">'m'</span>,{<span class="string">'x'</span>,<span class="string">'y'</span>,<span class="string">'x^2'</span>,<span class="string">'y^2'</span>,<span class="string">'x*y'</span>});
+    covarColl = CovColl({baseline,gaussian,zernike});
+
+    <span class="comment">% Create the trial structure</span>
+    spikeColl = nstColl(nst);
+    trial     = Trial(spikeColl,covarColl);
+
+
+    <span class="comment">% Define how we want to analyze the data</span>
+    tc{1} = TrialConfig({{<span class="string">'Baseline'</span>,<span class="string">'mu'</span>},{<span class="string">'Gaussian'</span>,<span class="keyword">...</span>
+                        <span class="string">'x'</span>,<span class="string">'y'</span>,<span class="string">'x^2'</span>,<span class="string">'y^2'</span>,<span class="string">'x*y'</span>}},sampleRate,[]);
+    tc{1}.setName(<span class="string">'Gaussian'</span>);
+    tc{2} = TrialConfig({{<span class="string">'Zernike'</span> <span class="string">'z1'</span>,<span class="string">'z2'</span>,<span class="string">'z3'</span>,<span class="string">'z4'</span>,<span class="string">'z5'</span>,<span class="string">'z6'</span>,<span class="keyword">...</span>
+                        <span class="string">'z7'</span>,<span class="string">'z8'</span>,<span class="string">'z9'</span>,<span class="string">'z10'</span>}},sampleRate,[]);
+    tc{2}.setName(<span class="string">'Zernike'</span>);
+    tcc = ConfigColl(tc);
+
+    <span class="comment">% Perform Analysis (Commented to since data already saved)</span>
+<span class="comment">%     results =Analysis.RunAnalysisForAllNeurons(trial,tcc,0);</span>
+
+    <span class="comment">% Save results</span>
+<span class="comment">%     resStruct =FitResult.CellArrayToStructure(results);</span>
+<span class="comment">%     filename = ['PlaceCellAnimal' num2str(n) 'Results'];</span>
+<span class="comment">%     save(filename,'resStruct');</span>
+<span class="keyword">end</span>
+</pre><h2>View Summary Statistics<a name="4"></a></h2><p>Note the Zernike Polynomials yield better fits in terms of decreased KS Statistics (less deviation from the 45 degree line), reduced AIC and reduced BIC across the majority of cells and for both animals</p><pre class="codeinput"><span class="keyword">for</span> n=1:numAnimals
+    resData=load(strcat(<span class="string">'PlaceCellAnimal'</span>,num2str(n),<span class="string">'Results.mat'</span>));
+    results = FitResult.fromStructure(resData.resStruct);
+    Summary = FitResSummary(results);
+    Summary.plotSummary;
+<span class="keyword">end</span>
+</pre><img vspace="5" hspace="5" src="HippocampalPlaceCellExample_02.png" alt=""> <img vspace="5" hspace="5" src="HippocampalPlaceCellExample_03.png" alt=""> <h2>Visualize the results<a name="5"></a></h2><pre class="codeinput"><span class="comment">% Define a grid</span>
+[x_new,y_new]=meshgrid(-1:.01:1); <span class="comment">%define new x and y</span>
+y_new = flipud(y_new); x_new = fliplr(x_new);
+[theta_new,r_new] = cart2pol(x_new,y_new);
+
+<span class="comment">%Data for the gaussian fit</span>
+newData{1} =ones(size(x_new));
+newData{2} =x_new; newData{3} =y_new;
+newData{4} =x_new.^2; newData{5} =y_new.^2;
+newData{6} =x_new.*y_new;
+
+
+<span class="comment">% Zernike polynomials only defined on the unit disk</span>
+idx = r_new&lt;=1;
+zpoly = cell(1,10);
+cnt=0;
+<span class="keyword">for</span> l=0:3
+   <span class="keyword">for</span> m=-l:l
+       <span class="keyword">if</span>(~any(mod(l-m,2)))
+        cnt = cnt+1;
+        temp = nan(size(x_new));
+        temp(idx) = zernfun(l,m,r_new(idx),theta_new(idx),<span class="string">'norm'</span>);
+        zpoly{cnt} = temp;
+       <span class="keyword">end</span>
+   <span class="keyword">end</span>
+<span class="keyword">end</span>
+
+
+
+<span class="keyword">for</span> n=1:numAnimals
+
+    clear <span class="string">lambdaGaussian</span> <span class="string">lambdaZernike</span>;
+    load(strcat(<span class="string">'PlaceCellDataAnimal'</span>,num2str(n),<span class="string">'.mat'</span>));
+    resData=load(strcat(<span class="string">'PlaceCellAnimal'</span>,num2str(n),<span class="string">'Results.mat'</span>));
+    results = FitResult.fromStructure(resData.resStruct);
+
+    <span class="keyword">for</span> i=1:length(neuron)
+        <span class="comment">% Evaluate our fits using the new data and the estimated parameters</span>
+        lambdaGaussian{i} = results{i}.evalLambda(1,newData);
+        lambdaZernike{i} =  results{i}.evalLambda(2,zpoly);
+    <span class="keyword">end</span>
+
+
+
+
+    <span class="comment">% Plot the receptive fields</span>
+    <span class="keyword">for</span> i=1:length(neuron)
+        <span class="comment">% 3d plot of an example place field</span>
+
+
+        <span class="comment">% 2d plot of all the cell's fields</span>
+        <span class="keyword">if</span>(n==1)
+            h4=figure(4);
+            <span class="keyword">if</span>(i==1)
+                annotation(h4,<span class="string">'textbox'</span>,<span class="keyword">...</span>
+                    [0.343261904761904 0.928571428571418 <span class="keyword">...</span>
+                    0.392857142857143 0.0595238095238095],<span class="keyword">...</span>
+                    <span class="string">'String'</span>,{[<span class="string">'Gaussian Place Fields - Animal#'</span> <span class="keyword">...</span>
+                    num2str(n)]},<span class="string">'FitBoxToText'</span>,<span class="string">'on'</span>); hold <span class="string">on</span>;
+            <span class="keyword">end</span>
+            subplot(7,7,i);
+        <span class="keyword">elseif</span>(n==2)
+            h6=figure(6);
+            <span class="keyword">if</span>(i==1)
+                annotation(h6,<span class="string">'textbox'</span>,<span class="keyword">...</span>
+                    [0.343261904761904 0.928571428571418 <span class="keyword">...</span>
+                    0.392857142857143 0.0595238095238095],<span class="keyword">...</span>
+                    <span class="string">'String'</span>,{[<span class="string">'Gaussian Place Fields - Animal#'</span> <span class="keyword">...</span>
+                    num2str(n)]},<span class="string">'FitBoxToText'</span>,<span class="string">'on'</span>); hold <span class="string">on</span>;
+            <span class="keyword">end</span>
+            subplot(6,7,i);
+        <span class="keyword">end</span>
+        pcolor(x_new,y_new,lambdaGaussian{i}), shading <span class="string">interp</span>
+        axis <span class="string">square</span>; set(gca,<span class="string">'xtick'</span>,[],<span class="string">'ytick'</span>,[]);
+
+
+        <span class="keyword">if</span>(n==1)
+            h5=figure(5);
+            <span class="keyword">if</span>(i==1)
+                annotation(h5,<span class="string">'textbox'</span>,<span class="keyword">...</span>
+                    [0.343261904761904 0.928571428571418 <span class="keyword">...</span>
+                    0.392857142857143 0.0595238095238095],<span class="keyword">...</span>
+                    <span class="string">'String'</span>,{[<span class="string">'Zernike Place Fields - Animal#'</span> <span class="keyword">...</span>
+                    num2str(n)]},<span class="string">'FitBoxToText'</span>,<span class="string">'on'</span>); hold <span class="string">on</span>;
+
+            <span class="keyword">end</span>
+            subplot(7,7,i);
+        <span class="keyword">elseif</span>(n==2)
+            h7=figure(7);
+            <span class="keyword">if</span>(i==1)
+               annotation(h7,<span class="string">'textbox'</span>,<span class="keyword">...</span>
+                    [0.343261904761904 0.928571428571418 <span class="keyword">...</span>
+                    0.392857142857143 0.0595238095238095],<span class="keyword">...</span>
+                    <span class="string">'String'</span>,{[<span class="string">'Zernike Place Fields - Animal#'</span> <span class="keyword">...</span>
+                    num2str(n)]},<span class="string">'FitBoxToText'</span>,<span class="string">'on'</span>); hold <span class="string">on</span>;
+            <span class="keyword">end</span>
+            subplot(6,7,i);
+        <span class="keyword">end</span>
+        pcolor(x_new,y_new,lambdaZernike{i}), shading <span class="string">interp</span>
+        axis <span class="string">square</span>;
+        set(gca,<span class="string">'xtick'</span>,[],<span class="string">'ytick'</span>,[]);
+    <span class="keyword">end</span>
+
+
+
+
+<span class="keyword">end</span>
+
+
+
+    clear <span class="string">lambdaGaussian</span> <span class="string">lambdaZernike</span>;
+    load(strcat(<span class="string">'PlaceCellDataAnimal1.mat'</span>));
+    resData=load(strcat(<span class="string">'PlaceCellAnimal1Results.mat'</span>));
+    results = FitResult.fromStructure(resData.resStruct);
+
+    <span class="keyword">for</span> i=1:length(neuron)
+        <span class="comment">% Evaluate our fits using the new data and the estimated parameters</span>
+        lambdaGaussian{i} = results{i}.evalLambda(1,newData);
+        lambdaZernike{i} =  results{i}.evalLambda(2,zpoly);
+    <span class="keyword">end</span>
+
+
+
+    exampleCell = 25;
+    figure(8);
+    plot(x,y,<span class="string">'b'</span>,neuron{exampleCell}.xN,neuron{exampleCell}.yN,<span class="string">'r.'</span>);
+    xlabel(<span class="string">'x'</span>); ylabel(<span class="string">'y'</span>);
+    title([<span class="string">'Animal#1, Cell#'</span> num2str(exampleCell)]);
+
+    figure(9);
+    h_mesh = mesh(x_new,y_new,lambdaGaussian{exampleCell},<span class="string">'AlphaData'</span>,0);
+    get(h_mesh,<span class="string">'AlphaData'</span>);
+    set(h_mesh,<span class="string">'FaceAlpha'</span>,0.2,<span class="string">'EdgeAlpha'</span>,0.2,<span class="string">'EdgeColor'</span>,<span class="string">'b'</span>);
+    hold <span class="string">on</span>;
+    h_mesh = mesh(x_new,y_new,lambdaZernike{exampleCell},<span class="string">'AlphaData'</span>,0);
+    get(h_mesh,<span class="string">'AlphaData'</span>);
+    set(h_mesh,<span class="string">'FaceAlpha'</span>,0.2,<span class="string">'EdgeAlpha'</span>,0.2,<span class="string">'EdgeColor'</span>,<span class="string">'g'</span>);
+
+    legend(results{exampleCell}.lambda.dataLabels);
+    plot(x,y,neuron{exampleCell}.xN,neuron{exampleCell}.yN,<span class="string">'r.'</span>);
+    axis <span class="string">tight</span> <span class="string">square</span>;
+    xlabel(<span class="string">'x position'</span>); ylabel(<span class="string">'y position'</span>);
+    title([<span class="string">'Animal#1, Cell#'</span> num2str(exampleCell)]);
+</pre><img vspace="5" hspace="5" src="HippocampalPlaceCellExample_04.png" alt=""> <img vspace="5" hspace="5" src="HippocampalPlaceCellExample_05.png" alt=""> <img vspace="5" hspace="5" src="HippocampalPlaceCellExample_06.png" alt=""> <img vspace="5" hspace="5" src="HippocampalPlaceCellExample_07.png" alt=""> <img vspace="5" hspace="5" src="HippocampalPlaceCellExample_08.png" alt=""> <img vspace="5" hspace="5" src="HippocampalPlaceCellExample_09.png" alt=""> <p class="footer"><br>
+      Published with MATLAB&reg; 7.13<br></p></div><!--
+##### SOURCE BEGIN #####
+%% HIPPOCAMPAL PLACE CELL - RECEPTIVE FIELD ESTIMATION 
+% Estimation of receptive fields of neurons is a very common data analysis problem in neuroscience.
+% Here we use the nSTAT software to perform an estimation of the receptive fields of hippocampal
+% place cells using a bivariate Gaussian model and Zernike polynomials. The number of zernike polynomials 
+% is based on "An Analysis of Hippocampal Spatio-Temporal Representations Using a Bayesian Algorithm for Neural
+% Spike Train Decoding" Barbieri et. al 2005. The data used herein in was
+% provided by Dr. Ricardo Barbieri on 2/28/2011.
+%
+% *Author*: Iahn Cajigas 
+%
+% *Date*: 3/1/2011
+%%
+close all
+    
+%% Example Data
+% The x and y coordinates of a freely foraging rat in a circular environment (70cm in diameter and 30cm high walls) and a fixed visual cue. 
+% The x and y coordinates at the time when a spike was observed are marked
+% in red. The position coordinates have been normalized to be between -1
+% and 1 to allow to simplify the analysis. 
+    load(strcat('PlaceCellDataAnimal1.mat'));    
+    exampleCell = 25;
+    figure(1);
+    plot(x,y,'b',neuron{exampleCell}.xN,neuron{exampleCell}.yN,'r.');
+    xlabel('x'); ylabel('y'); 
+    title(['Animal#1, Cell#' num2str(exampleCell)]);
+    
+ %% Analyze All Cells 
+ numAnimals =2;
+for n=1:numAnimals
+    % load the data
+    clear x y neuron time nst tc tcc z;
+    load(strcat('PlaceCellDataAnimal',num2str(n),'.mat'));
+    
+    % Create the spikeTrains for each cell
+    for i=1:length(neuron)
+        nst{i} = nspikeTrain(neuron{i}.spikeTimes);
+    end
+
+
+    % Convert to polar coordinates
+    [theta,r] = cart2pol(x,y);
+    
+
+    % Evaluate the Zernike Polynomials 
+    % Number of polynomials from "An Analysis of Hippocampal
+    % Spatio-Temporal Representations Using a Bayesian Algorithm for Neural
+    % Spike Train Decoding" Barbieri et. al 2005
+    cnt=0;
+    for l=0:3
+       for m=-l:l 
+           if(~any(mod(l-m,2))) % otherwise the polynomial = 0
+            cnt = cnt+1;
+            z(:,cnt) = zernfun(l,m,r,theta,'norm');
+            % zernfun by Paul Fricker
+            % http://www.mathworks.com/matlabcentral/fileexchange/7687
+           end
+       end
+    end
+
+    % Data sampled at 30 Hz but just to be sure
+    delta=min(diff(time));
+    sampleRate = round(1/delta);
+
+    % Define Covariates for the analysis
+    baseline = Covariate(time,ones(length(x),1),'Baseline','time','s','',...
+                        {'mu'});
+    zernike  = Covariate(time,z,'Zernike','time','s','m',{'z1','z2','z3',...
+                        'z4','z5','z6','z7','z8','z9','z10'});
+    gaussian = Covariate(time,[x y x.^2 y.^2 x.*y],'Gaussian','time',...
+                        's','m',{'x','y','x^2','y^2','x*y'});
+    covarColl = CovColl({baseline,gaussian,zernike});
+
+    % Create the trial structure
+    spikeColl = nstColl(nst);
+    trial     = Trial(spikeColl,covarColl);
+    
+
+    % Define how we want to analyze the data
+    tc{1} = TrialConfig({{'Baseline','mu'},{'Gaussian',...
+                        'x','y','x^2','y^2','x*y'}},sampleRate,[]); 
+    tc{1}.setName('Gaussian');
+    tc{2} = TrialConfig({{'Zernike' 'z1','z2','z3','z4','z5','z6',...
+                        'z7','z8','z9','z10'}},sampleRate,[]); 
+    tc{2}.setName('Zernike');
+    tcc = ConfigColl(tc);
+    
+    % Perform Analysis (Commented to since data already saved)
+%     results =Analysis.RunAnalysisForAllNeurons(trial,tcc,0);
+    
+    % Save results
+%     resStruct =FitResult.CellArrayToStructure(results);
+%     filename = ['PlaceCellAnimal' num2str(n) 'Results'];
+%     save(filename,'resStruct');
+end
+
+%% View Summary Statistics
+% Note the Zernike Polynomials yield better fits in terms of decreased KS
+% Statistics (less deviation from the 45 degree line), reduced AIC and
+% reduced BIC across the majority of cells and for both animals
+for n=1:numAnimals
+    resData=load(strcat('PlaceCellAnimal',num2str(n),'Results.mat'));
+    results = FitResult.fromStructure(resData.resStruct);
+    Summary = FitResSummary(results);
+    Summary.plotSummary;
+end    
+
+%% Visualize the results 
+
+% Define a grid 
+[x_new,y_new]=meshgrid(-1:.01:1); %define new x and y
+y_new = flipud(y_new); x_new = fliplr(x_new);
+[theta_new,r_new] = cart2pol(x_new,y_new);
+
+%Data for the gaussian fit 
+newData{1} =ones(size(x_new));
+newData{2} =x_new; newData{3} =y_new;
+newData{4} =x_new.^2; newData{5} =y_new.^2;
+newData{6} =x_new.*y_new;
+
+
+% Zernike polynomials only defined on the unit disk
+idx = r_new<=1;
+zpoly = cell(1,10);
+cnt=0;
+for l=0:3
+   for m=-l:l 
+       if(~any(mod(l-m,2)))
+        cnt = cnt+1;
+        temp = nan(size(x_new));
+        temp(idx) = zernfun(l,m,r_new(idx),theta_new(idx),'norm');
+        zpoly{cnt} = temp;
+       end
+   end
+end
+
+
+
+for n=1:numAnimals 
+    
+    clear lambdaGaussian lambdaZernike;
+    load(strcat('PlaceCellDataAnimal',num2str(n),'.mat'));
+    resData=load(strcat('PlaceCellAnimal',num2str(n),'Results.mat'));
+    results = FitResult.fromStructure(resData.resStruct);
+    
+    for i=1:length(neuron)
+        % Evaluate our fits using the new data and the estimated parameters
+        lambdaGaussian{i} = results{i}.evalLambda(1,newData);
+        lambdaZernike{i} =  results{i}.evalLambda(2,zpoly);
+    end
+
+   
+    
+    
+    % Plot the receptive fields
+    for i=1:length(neuron)
+        % 3d plot of an example place field
+        
+
+        % 2d plot of all the cell's fields
+        if(n==1)
+            h4=figure(4); 
+            if(i==1)
+                annotation(h4,'textbox',...
+                    [0.343261904761904 0.928571428571418 ...
+                    0.392857142857143 0.0595238095238095],...
+                    'String',{['Gaussian Place Fields - Animal#' ...
+                    num2str(n)]},'FitBoxToText','on'); hold on;
+            end
+            subplot(7,7,i); 
+        elseif(n==2)
+            h6=figure(6);
+            if(i==1)
+                annotation(h6,'textbox',...
+                    [0.343261904761904 0.928571428571418 ...
+                    0.392857142857143 0.0595238095238095],...
+                    'String',{['Gaussian Place Fields - Animal#' ...
+                    num2str(n)]},'FitBoxToText','on'); hold on;
+            end
+            subplot(6,7,i);
+        end
+        pcolor(x_new,y_new,lambdaGaussian{i}), shading interp
+        axis square; set(gca,'xtick',[],'ytick',[]);
+        
+        
+        if(n==1)
+            h5=figure(5);
+            if(i==1)
+                annotation(h5,'textbox',...
+                    [0.343261904761904 0.928571428571418 ...
+                    0.392857142857143 0.0595238095238095],...
+                    'String',{['Zernike Place Fields - Animal#' ...
+                    num2str(n)]},'FitBoxToText','on'); hold on;
+                
+            end
+            subplot(7,7,i); 
+        elseif(n==2)
+            h7=figure(7);
+            if(i==1)
+               annotation(h7,'textbox',...
+                    [0.343261904761904 0.928571428571418 ...
+                    0.392857142857143 0.0595238095238095],...
+                    'String',{['Zernike Place Fields - Animal#' ...
+                    num2str(n)]},'FitBoxToText','on'); hold on;
+            end
+            subplot(6,7,i);
+        end
+        pcolor(x_new,y_new,lambdaZernike{i}), shading interp
+        axis square; 
+        set(gca,'xtick',[],'ytick',[]);
+    end
+
+
+    
+
+end
+
+
+
+    clear lambdaGaussian lambdaZernike;
+    load(strcat('PlaceCellDataAnimal1.mat'));
+    resData=load(strcat('PlaceCellAnimal1Results.mat'));
+    results = FitResult.fromStructure(resData.resStruct);
+    
+    for i=1:length(neuron)
+        % Evaluate our fits using the new data and the estimated parameters
+        lambdaGaussian{i} = results{i}.evalLambda(1,newData);
+        lambdaZernike{i} =  results{i}.evalLambda(2,zpoly);
+    end
+
+    
+    
+    exampleCell = 25;
+    figure(8);
+    plot(x,y,'b',neuron{exampleCell}.xN,neuron{exampleCell}.yN,'r.');
+    xlabel('x'); ylabel('y'); 
+    title(['Animal#1, Cell#' num2str(exampleCell)]);
+    
+    figure(9);
+    h_mesh = mesh(x_new,y_new,lambdaGaussian{exampleCell},'AlphaData',0);
+    get(h_mesh,'AlphaData');
+    set(h_mesh,'FaceAlpha',0.2,'EdgeAlpha',0.2,'EdgeColor','b');
+    hold on;
+    h_mesh = mesh(x_new,y_new,lambdaZernike{exampleCell},'AlphaData',0);
+    get(h_mesh,'AlphaData');
+    set(h_mesh,'FaceAlpha',0.2,'EdgeAlpha',0.2,'EdgeColor','g');
+
+    legend(results{exampleCell}.lambda.dataLabels);
+    plot(x,y,neuron{exampleCell}.xN,neuron{exampleCell}.yN,'r.');
+    axis tight square;
+    xlabel('x position'); ylabel('y position');
+    title(['Animal#1, Cell#' num2str(exampleCell)]);
+    
+
+        
+    
+
+##### SOURCE END #####
+--></body></html>
