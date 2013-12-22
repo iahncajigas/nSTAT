@@ -1294,7 +1294,9 @@ classdef SignalObj < handle
             %sObjOut is a copy of sObj with the newSampleRate specified;
             if(sObj.sampleRate ~=newSampleRate)
                 sObjOut = sObj.copySignal;
-                sObjOut.resampleMe(newSampleRate);
+                if(or(~isnan(sObjOut.sampleRate),size(sObjOut.data,1)>1))
+                    sObjOut.resampleMe(newSampleRate);
+                end
             else
                 sObjOut = sObj.copySignal;
             end

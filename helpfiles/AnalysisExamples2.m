@@ -43,7 +43,7 @@ spikeColl = nstColl({nst});
 covarColl = CovColl({baseline,radial});
 trial     = Trial(spikeColl,covarColl);
 clear tc;
-sampleRate=30;
+sampleRate=1000;
 % tcObj=TrialConfig(covMask,sampleRate, history,minTime,maxTime)
 tc{1} = TrialConfig({{'Baseline','mu'},{'Radial','x','y'}},sampleRate,[]); tc{1}.setName('Linear');
 tc{2} = TrialConfig({{'Baseline','mu'},{'Radial','x','y','x^2','y^2','x*y'}},sampleRate,[]); tc{2}.setName('Quadratic');
@@ -94,9 +94,10 @@ b-fitResults.b{2} % should be close to zero
 
 
 %% Compute the history effect
-sampleRate=30;  makePlot=1; neuronNum = 1;
-covLabels = {{'Baseline','mu'}};
+sampleRate=1000;  makePlot=1; neuronNum = 1;
+covLabels = {{'Baseline','mu'},{'Radial','x','y','x^2','y^2','x*y'}};
 Algorithm = 'GLM';
 batchMode=0;
-windowTimes =(0:2:10)./sampleRate;
+windowTimes =(0:1:10)./sampleRate;
+% [fitResults,tcc] = computeHistLag(tObj,neuronNum,windowTimes,CovLabels,Algorithm,batchMode,sampleRate,makePlot,histMinTimes,histMaxTimes)
 [fitResults,tcc] = Analysis.computeHistLag(trial,neuronNum,windowTimes,covLabels,Algorithm,batchMode,sampleRate,makePlot);

@@ -10,9 +10,9 @@ index = strfind(currdir,'helpfiles')-1;
 rootpath = currdir(1:index);
 
 Direction=3; Neuron=1; Stim=2;
-datapath = strcat(rootpath,['data\Explicit Stimulus\Dir' num2str(Direction)...
-    '\Neuron' num2str(Neuron) '\Stim' num2str(Stim) '\']);
-data=load(strcat(datapath,'trngdataBis.mat'));
+datapath = fullfile(rootpath,'data','Explicit Stimulus',strcat('Dir', num2str(Direction)),...
+    strcat('Neuron', num2str(Neuron)), strcat('Stim', num2str(Stim)));
+data=load(fullfile(datapath,'trngdataBis.mat'));
 
 time=0:.001:(length(data.t)-1)*.001;
 stimData = data.t;

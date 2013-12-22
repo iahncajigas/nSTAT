@@ -1,11 +1,11 @@
 
 %% Test the nstColl Class
 % Create pseudo spike data and create a neural spike collection (nstColl).
-close all;
+close all; clear all;
 for i=1:20
     spikeTimes = sort(rand(1,100))*1;
     nst{i}=nspikeTrain(spikeTimes,'',.1);
-    %nst{i}.setName(strcat('Neuron',num2str(i)));
+    nst{i}.setName(strcat('Neuron',num2str(i)));
 end
 spikeColl=nstColl(nst);
 

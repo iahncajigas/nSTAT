@@ -38,7 +38,7 @@ classdef DecodingAlgorithms
         %all of the computations for the PPAF are done symbolically based
         %on the CIF object. However, it also means that this version is
         %must slower than the linear version below.
-        function [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT] = PPDecodeFilter(A, Q, dN,lambdaCIFColl,binwidth,x0,Pi0, yT,PiT,estimateTarget)  
+        function [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT] = PPDecodeFilter(A, Q, Px0, dN,lambdaCIFColl,binwidth,x0,Pi0, yT,PiT,estimateTarget)  
             % A can be static or can be a different matrix for each time N
 
             [C,N]   = size(dN); % N time samples, C cells
@@ -46,21 +46,21 @@ classdef DecodingAlgorithms
             ns=size(A,1); % number of states
 
 
-            if(nargin<11 || isempty(estimateTarget))
+            if(nargin<12 || isempty(estimateTarget))
                 estimateTarget=0;
             end
 
-            if(nargin<10 || isempty(PiT))
+            if(nargin<11 || isempty(PiT))
                 if(estimateTarget==1)
                     PiT = zeros(size(Q));
                 else
                     PiT = 0*diag(ones(ns,1))*1e-6;
                 end
             end
-            if(nargin<8 || isempty(Pi0))
+            if(nargin<9 || isempty(Pi0))
                 Pi0 = zeros(ns,ns);
             end
-            if(nargin<9 || isempty(yT))
+            if(nargin<10 || isempty(yT))
                 yT=[];
                 Amat = A;
                 Qmat = Q;
@@ -136,11 +136,11 @@ classdef DecodingAlgorithms
 
             end
 
-            if(nargin<7 || isempty(x0))
+            if(nargin<8 || isempty(x0))
                 x0=zeros(size(A,2),1);
             end
 
-            if(nargin<6)
+            if(nargin<7)
                 binwidth = .001; % in seconds
             end
 

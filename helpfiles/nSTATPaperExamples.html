@@ -6,61 +6,64 @@
    <!--
 This HTML was auto-generated from MATLAB code.
 To make changes, update the MATLAB code and republish this document.
-      --><title>nSTAT J. Neuroscience Methods Paper Examples</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-02-29"><meta name="DC.source" content="nSTATPaperExamples.m"><style type="text/css">
+      --><title>nSTAT J. Neuroscience Methods Paper Examples</title><meta name="generator" content="MATLAB 8.2"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2013-11-20"><meta name="DC.source" content="nSTATPaperExamples.m"><style type="text/css">
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,font,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td{margin:0;padding:0;border:0;outline:0;font-size:100%;vertical-align:baseline;background:transparent}body{line-height:1}ol,ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:'';content:none}:focus{outine:0}ins{text-decoration:none}del{text-decoration:line-through}table{border-collapse:collapse;border-spacing:0}
 
-body {
-  background-color: white;
-  margin:10px;
-}
+html { min-height:100%; margin-bottom:1px; }
+html body { height:100%; margin:0px; font-family:Arial, Helvetica, sans-serif; font-size:10px; color:#000; line-height:140%; background:#fff none; overflow-y:scroll; }
+html body td { vertical-align:top; text-align:left; }
 
-h1 {
-  color: #990000; 
-  font-size: x-large;
-}
+h1 { padding:0px; margin:0px 0px 25px; font-family:Arial, Helvetica, sans-serif; font-size:1.5em; color:#d55000; line-height:100%; font-weight:normal; }
+h2 { padding:0px; margin:0px 0px 8px; font-family:Arial, Helvetica, sans-serif; font-size:1.2em; color:#000; font-weight:bold; line-height:140%; border-bottom:1px solid #d6d4d4; display:block; }
+h3 { padding:0px; margin:0px 0px 5px; font-family:Arial, Helvetica, sans-serif; font-size:1.1em; color:#000; font-weight:bold; line-height:140%; }
 
-h2 {
-  color: #990000;
-  font-size: medium;
-}
+a { color:#005fce; text-decoration:none; }
+a:hover { color:#005fce; text-decoration:underline; }
+a:visited { color:#004aa0; text-decoration:none; }
 
-/* Make the text shrink to fit narrow windows, but not stretch too far in 
-wide windows. */ 
-p,h1,h2,div.content div {
-  max-width: 600px;
-  /* Hack for IE6 */
-  width: auto !important; width: 600px;
-}
+p { padding:0px; margin:0px 0px 20px; }
+img { padding:0px; margin:0px 0px 20px; border:none; }
+p img, pre img, tt img, li img { margin-bottom:0px; } 
 
-pre.codeinput {
-  background: #EEEEEE;
-  padding: 10px;
-}
-@media print {
-  pre.codeinput {word-wrap:break-word; width:100%;}
-} 
+ul { padding:0px; margin:0px 0px 20px 23px; list-style:square; }
+ul li { padding:0px; margin:0px 0px 7px 0px; }
+ul li ul { padding:5px 0px 0px; margin:0px 0px 7px 23px; }
+ul li ol li { list-style:decimal; }
+ol { padding:0px; margin:0px 0px 20px 0px; list-style:decimal; }
+ol li { padding:0px; margin:0px 0px 7px 23px; list-style-type:decimal; }
+ol li ol { padding:5px 0px 0px; margin:0px 0px 7px 0px; }
+ol li ol li { list-style-type:lower-alpha; }
+ol li ul { padding-top:7px; }
+ol li ul li { list-style:square; }
 
-span.keyword {color: #0000FF}
-span.comment {color: #228B22}
-span.string {color: #A020F0}
-span.untermstring {color: #B20000}
-span.syscmd {color: #B28C00}
+.content { font-size:1.2em; line-height:140%; padding: 20px; }
 
-pre.codeoutput {
-  color: #666666;
-  padding: 10px;
-}
+pre, tt, code { font-size:12px; }
+pre { margin:0px 0px 20px; }
+pre.error { color:red; }
+pre.codeinput { padding:10px; border:1px solid #d3d3d3; background:#f7f7f7; }
+pre.codeoutput { padding:10px 11px; margin:0px 0px 20px; color:#4c4c4c; }
 
-pre.error {
-  color: red;
-}
+@media print { pre.codeinput, pre.codeoutput { word-wrap:break-word; width:100%; } }
 
-p.footer {
-  text-align: right;
-  font-size: xx-small;
-  font-weight: lighter;
-  font-style: italic;
-  color: gray;
-}
+span.keyword { color:#0000FF }
+span.comment { color:#228B22 }
+span.string { color:#A020F0 }
+span.untermstring { color:#B20000 }
+span.syscmd { color:#B28C00 }
+
+.footer { width:auto; padding:10px 0px; margin:25px 0px 0px; border-top:1px dotted #878787; font-size:0.8em; line-height:140%; font-style:italic; color:#878787; text-align:left; float:none; }
+.footer p { margin:0px; }
+.footer a { color:#878787; }
+.footer a:hover { color:#878787; text-decoration:underline; }
+.footer a:visited { color:#878787; }
+
+table th { padding:7px 5px; text-align:left; vertical-align:middle; border: 1px solid #d6d4d4; font-weight:bold; }
+table td { padding:7px 5px; text-align:left; vertical-align:top; border:1px solid #d6d4d4; }
+
+
+
+
 
   </style></head><body><div class="content"><h1>nSTAT J. Neuroscience Methods Paper Examples</h1><!--introduction--><p><b>Author</b>: Iahn Cajigas</p><p><b>Date</b>: 01/04/2012</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Experiment 1</a></li><li><a href="#2">Constant Magnesium Concentration - Constant rate poisson</a></li><li><a href="#3">Varying Magnesium Concentration - Piecewise Constant rate poisson</a></li><li><a href="#4">Data Visualization</a></li><li><a href="#5">Define Covariates for the analysis</a></li><li><a href="#6">Define how we want to analyze the data</a></li><li><a href="#7">Perform Analysis</a></li><li><a href="#9">Experiment 2</a></li><li><a href="#10">Load the data</a></li><li><a href="#12">Compare constant rate model with model including stimulus effect</a></li><li><a href="#13">History Effect</a></li><li><a href="#14">Example 3 - PSTH Data</a></li><li><a href="#15">Estimate the PSTH with 50ms windows</a></li><li><a href="#16">Example 3b - SSGLM Example</a></li><li><a href="#17">Summarize Simulated Data</a></li><li><a href="#18">Estimation of the Stimulus Response</a></li><li><a href="#19">Run the SSGLM Filter</a></li><li><a href="#23">Compare differences across trials</a></li><li><a href="#24">Example 4 - HIPPOCAMPAL PLACE CELL - RECEPTIVE FIELD ESTIMATION</a></li><li><a href="#26">Example Data</a></li><li><a href="#27">Analyze All Cells</a></li><li><a href="#28">View Summary Statistics</a></li><li><a href="#30">Visualize the results</a></li><li><a href="#32">Example 5 - STIMULUS DECODING</a></li><li><a href="#33">Generate the conditional Intensity Function</a></li><li><a href="#35">Example 5b - Arm reaching to target Simulation</a></li><li><a href="#37">Experiment 6 - Hybrid Point Process Filter Example</a></li><li><a href="#38">Problem Statement</a></li><li><a href="#40">Generated Simulated Arm Reach</a></li><li><a href="#42">Simulate Neural Firing</a></li></ul></div><h2>Experiment 1<a name="1"></a></h2><p>MINIATURE EXCITATORY POST-SYNAPTIC CURRENTS (mEPSCs) Data from Marnie Phillips  <a href="marnie.a.phillips@gmail.com">marnie.a.phillips@gmail.com</a> This analysis is based on a partial version of the dataset used in</p><p>Phillips MA, Lewis LD, Gong J, Constantine-Paton M, Brown EN.  2011 <i>Model-based statistical analysis of miniature synaptic transmission.</i> J Neurophys (under consideration)</p><p><b>Date</b>: 03/01/2011</p><h2>Constant Magnesium Concentration - Constant rate poisson<a name="2"></a></h2><p>Under a constant Magnesium concentration, it is seen that the mEPSCs behave as a homogeneous poisson process (constant arrival rate).</p><pre class="codeinput">    close <span class="string">all</span>; clear <span class="string">all</span>;
     epsc2 = importdata(<span class="string">'epsc2.txt'</span>);
@@ -845,12 +848,12 @@ dKS =diff(S.KSStats);
 </pre><pre class="codeoutput">
 dAIC =
 
- -1.7919e+004
+  -1.7919e+04
 
 
 dBIC =
 
- -6.8929e+003
+  -6.8929e+03
 
 </pre><img vspace="5" hspace="5" src="nSTATPaperExamples_10.png" alt=""> <pre class="codeinput">close <span class="string">all</span>;
 <span class="comment">% Generate the actual stimulus effect</span>
@@ -1046,7 +1049,7 @@ title({<span class="string">'Learning Trial Vs. Baseline Trial'</span>;<span cla
 h_legend=legend([h1(1) h2(1)],<span class="string">'\lambda_{1}(t)'</span>,[<span class="string">'\lambda_{'</span> num2str(lt) <span class="string">'}(t)'</span>]);
 pos = get(h_legend,<span class="string">'position'</span>);
 set(h_legend, <span class="string">'position'</span>,[pos(1)+.03 pos(2)+.01 pos(3:4)]);
-</pre><pre class="codeoutput">The learning trial (compared to the first trial) is trial #9
+</pre><pre class="codeoutput">The learning trial (compared to the first trial) is trial #6
 </pre><img vspace="5" hspace="5" src="nSTATPaperExamples_12.png" alt=""> <h2>Example 4 - HIPPOCAMPAL PLACE CELL - RECEPTIVE FIELD ESTIMATION<a name="24"></a></h2><p>Estimation of receptive fields of neurons is a very common data analysis problem in neuroscience. Here we use the nSTAT software to perform an estimation of the receptive fields of hippocampal place cells using a bivariate Gaussian model and Zernike polynomials. The number of zernike polynomials is based on "An Analysis of Hippocampal Spatio-Temporal Representations Using a Bayesian Algorithm for Neural Spike Train Decoding" Barbieri et. al 2005. The data used herein in was provided by Dr. Ricardo Barbieri on 2/28/2011.</p><p><b>Author</b>: Iahn Cajigas</p><p><b>Date</b>: 3/1/2011</p><h2>Example Data<a name="26"></a></h2><p>The x and y coordinates of a freely foraging rat in a circular environment (70cm in diameter and 30cm high walls) and a fixed visual cue. The x and y coordinates at the time when a spike was observed are marked in red. The position coordinates have been normalized to be between -1 and 1 to allow to simplify the analysis.</p><pre class="codeinput">    close <span class="string">all</span>;
     load(strcat(<span class="string">'PlaceCellDataAnimal1.mat'</span>));
     exampleCell = [2 21 25 49];
@@ -1145,6 +1148,7 @@ CompilingHelpFile=1;
 <span class="keyword">end</span>
 </pre><h2>View Summary Statistics<a name="28"></a></h2><p>Note the Zernike Polynomials yield better fits in terms of decreased KS Statistics (less deviation from the 45 degree line), reduced AIC and reduced BIC across the majority of cells and for both animals</p><pre class="codeinput">clear <span class="string">Summary</span>;
  numAnimals =2;
+
 <span class="keyword">for</span> n=1:numAnimals
     resData=load(strcat(<span class="string">'PlaceCellAnimal'</span>,num2str(n),<span class="string">'Results.mat'</span>));
     results = FitResult.fromStructure(resData.resStruct);
@@ -1766,7 +1770,7 @@ fig1=figure(<span class="string">'OuterPosition'</span>,[scrsz(3)*.1 scrsz(4)*.1
 <span class="keyword">end</span>
 
 <span class="comment">%     close all;</span>
-</pre><img vspace="5" hspace="5" src="nSTATPaperExamples_23.png" alt=""> <h2>Experiment 6 - Hybrid Point Process Filter Example<a name="37"></a></h2><p>This example is based on an implementation of the Hybrid Point Process filter described in <i>General-purpose filter design for neural prosthetic devices</i> by Srinivasan L, Eden UT, Mitter SK, Brown EN in J Neurophysiol. 2007 Oct, 98(4):2456-75.</p><h2>Problem Statement<a name="38"></a></h2><p>Suppose that a process of interest can be modeled as consisting of several discrete states where the evolution of the system under each state can be modeled as a linear state space model. The observations of both the state and the continuous dynamics are not direct, but rather observed through how the continuous and discrete states affect the firing of a population of neurons. The goal of the hybrid filter is to estimate both the continuous dynamics and the underlying system state from only the neural population firing (point process observations).</p><p>To illustrate the use of this filter, we consider a reaching task. We assume two underlying system states s=1="Not Moving"=NM and s=2="Moving"=M. Under the "Not Moving" the position of the arm remain constant, whereas in the "Moving" state, the position and velocities evolved based on the arm acceleration that is modeled as a gaussian white noise process.</p><p>Under both the "Moving" and "Not Moving" states, the arm evolution state vector is</p><p><img src="nSTATPaperExamples_eq06211.png" alt="$${\bf{x}} = {[x,y,{v_x},{v_y},{a_x},{a_y}]^T}$$"></p><h2>Generated Simulated Arm Reach<a name="40"></a></h2><pre class="codeinput">clear <span class="string">all</span>;
+</pre><img vspace="5" hspace="5" src="nSTATPaperExamples_23.png" alt=""> <h2>Experiment 6 - Hybrid Point Process Filter Example<a name="37"></a></h2><p>NOTE THIS EXAMPLE WAS NOT INCLUDED IN THE FINAL VERSION OF THE PAPER This example is based on an implementation of the Hybrid Point Process filter described in <i>General-purpose filter design for neural prosthetic devices</i> by Srinivasan L, Eden UT, Mitter SK, Brown EN in J Neurophysiol. 2007 Oct, 98(4):2456-75.</p><h2>Problem Statement<a name="38"></a></h2><p>Suppose that a process of interest can be modeled as consisting of several discrete states where the evolution of the system under each state can be modeled as a linear state space model. The observations of both the state and the continuous dynamics are not direct, but rather observed through how the continuous and discrete states affect the firing of a population of neurons. The goal of the hybrid filter is to estimate both the continuous dynamics and the underlying system state from only the neural population firing (point process observations).</p><p>To illustrate the use of this filter, we consider a reaching task. We assume two underlying system states s=1="Not Moving"=NM and s=2="Moving"=M. Under the "Not Moving" the position of the arm remain constant, whereas in the "Moving" state, the position and velocities evolved based on the arm acceleration that is modeled as a gaussian white noise process.</p><p>Under both the "Moving" and "Not Moving" states, the arm evolution state vector is</p><p><img src="nSTATPaperExamples_eq06211.png" alt="$${\bf{x}} = {[x,y,{v_x},{v_y},{a_x},{a_y}]^T}$$"></p><h2>Generated Simulated Arm Reach<a name="40"></a></h2><pre class="codeinput">clear <span class="string">all</span>;
 close <span class="string">all</span>;
 delta=0.001;
 Tmax=2;
@@ -2146,8 +2150,7 @@ fig1=figure(<span class="string">'OuterPosition'</span>,[scrsz(3)*.1 scrsz(4)*.1
     hy=ylabel(<span class="string">'v_{y}(t) [cm/s]'</span>); hx=xlabel(<span class="string">'time [s]'</span>);
     set([hx, hy],<span class="string">'FontName'</span>, <span class="string">'Arial'</span>,<span class="string">'FontSize'</span>,10,<span class="string">'FontWeight'</span>,<span class="string">'bold'</span>);
     title(<span class="string">'Y Velocity'</span>,<span class="string">'FontWeight'</span>,<span class="string">'bold'</span>,<span class="string">'Fontsize'</span>,12,<span class="string">'FontName'</span>,<span class="string">'Arial'</span>);
-</pre><img vspace="5" hspace="5" src="nSTATPaperExamples_25.png" alt=""> <p class="footer"><br>
-      Published with MATLAB&reg; 7.13<br></p></div><!--
+</pre><img vspace="5" hspace="5" src="nSTATPaperExamples_25.png" alt=""> <p class="footer"><br><a href="http://www.mathworks.com/products/matlab/">Published with MATLAB&reg; R2013b</a><br></p></div><!--
 ##### SOURCE BEGIN #####
 %% nSTAT J. Neuroscience Methods Paper Examples
 %
@@ -3288,6 +3291,7 @@ end
 % reduced BIC across the majority of cells and for both animals
 clear Summary;
  numAnimals =2;
+ 
 for n=1:numAnimals
     resData=load(strcat('PlaceCellAnimal',num2str(n),'Results.mat'));
     results = FitResult.fromStructure(resData.resStruct);
@@ -3941,6 +3945,7 @@ end
 
 %     close all;
 %% Experiment 6 - Hybrid Point Process Filter Example 
+% NOTE THIS EXAMPLE WAS NOT INCLUDED IN THE FINAL VERSION OF THE PAPER
 % This example is based on an implementation of the Hybrid Point Process
 % filter described in _General-purpose filter design for neural prosthetic 
 % devices_ by Srinivasan L, Eden UT, Mitter SK, Brown EN in J Neurophysiol.

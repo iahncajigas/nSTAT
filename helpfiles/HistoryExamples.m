@@ -9,7 +9,7 @@ nst        = nspikeTrain(spikeTimes,'n1',.001);
 windowTimes = [.001 .002 .004];
 h=History(windowTimes);
 
-%% 
+%% /
 % The firing activity within each window is computed by calling the
 % computeHistory method on a nspikeTrain, nstColl, or a cell array of
 % nspikeTrains

@@ -10,12 +10,17 @@ px = zeros(1,length(time));
 py = zeros(1,length(time));
 Q=.01;
 r =  Q.*randn(2,length(time));
-px = cumsum(r(1,:))';
-py = cumsum(r(2,:))';
+vx = cumsum(r(1,:))';
+vy = cumsum(r(2,:))';
 
-N=100; A=1; B=ones(1,N)./N;
-px = filtfilt(B,A,px);
-py = filtfilt(B,A,py);
+velSig = SignalObj(time, [vx, vy],'vel');
+posSig = velSig.integral;
+posData = posSig.data;
+px = posData(:,1);
+py = posData(:,2);
+% N=100; A=1; B=ones(1,N)./N;
+% px = filtfilt(B,A,px);
+% py = filtfilt(B,A,py);
 figure;
 plot(px,py);
 title('Simulated X-Y trajectory');
@@ -24,10 +29,10 @@ xlabel('x'); ylabel('y');
 
 %% Generate random receptive fields to simulate different neurons
 clear lambdaCIF lambda tempSpikeColl n spikeColl
-numRealizations=20;
+numRealizations=80;
 
 coeffs = -abs(1*randn(numRealizations,5));
-coeffs = [-5*abs(randn(numRealizations,1)) coeffs];
+coeffs = [-2*abs(randn(numRealizations,1)) coeffs];
 dataMat = [ones(length(time),1) px py px.^2 py.^2 px.*py];
  for i=1:numRealizations
      tempData  = exp(dataMat*coeffs(i,:)');
@@ -88,7 +93,7 @@ Q=[vx 0;0 vy];
 Px0=.1*eye(2,2); A=1*eye(2,2);
 % The PPDecodeFilter uses the matlab symbolic toolbox to evaluate the
 % gradient and hessian of the CIF. It is currently not working properly.
-[x_p, Pe_p, x_u, Pe_u] = DecodingAlgorithms.PPDecodeFilter(A, Q, dN',lambdaCIF,delta);
+[x_p, Pe_p, x_u, Pe_u] = DecodingAlgorithms.PPDecodeFilter(A, Q, Px0, dN',lambdaCIF,delta);
 figure;
 plot(x_u(1,:),x_u(2,:),'b',px,py,'k')
 legend('predicted path','actual path');

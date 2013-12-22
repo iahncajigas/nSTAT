@@ -3,18 +3,18 @@
 
 
 %% Example 1: A simple data set
-close all;
+close all; clear all;
 lengthTrial=1;
 
 %% 
 % Create History windows of interest
-windowTimes = [.1 .2 .4];
+windowTimes = [0 .1 .2 .4];
 h=History(windowTimes);
 figure; h.plot;
 
 %%
 % Load Covariates
-load Covariates.mat; %load position and force covariates
+load CovariateSample.mat; %load position and force covariates
 cc=CovColl({position,force});
 cc.setMaxTime(lengthTrial);
 figure; cc.plot;

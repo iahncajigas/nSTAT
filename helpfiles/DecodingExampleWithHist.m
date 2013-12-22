@@ -9,7 +9,8 @@
 % and one that assumes no history dependence.
 
 
-close all; clear all;
+close all; 
+% clear all;
 delta = 0.001; Tmax = 1;
 time = 0:delta:Tmax;
 f=1; b1=1;b0=-2;
@@ -53,8 +54,9 @@ dN=sC.dataToMatrix;
 Q=2*std(stim.data(2:end)-stim.data(1:end-1));
 Px0=.1; A=1;
 % Decode with the correct and incorrect CIFs
-[x_p, W_p, x_u, W_u] = CIF.PPDecodeFilter(A, Q, Px0, dN',lambdaCIF,delta);
-[x_pNoHist, W_pNoHist, x_uNoHist, W_uNoHist] = CIF.PPDecodeFilter(A, Q, Px0, dN',lambdaCIFNoHist,delta);
+
+[x_p, W_p, x_u, W_u] = DecodingAlgorithms.PPDecodeFilter(A, Q, Px0, dN',lambdaCIF,delta);
+[x_pNoHist, W_pNoHist, x_uNoHist, W_uNoHist] = DecodingAlgorithms.PPDecodeFilter(A, Q, Px0, dN',lambdaCIFNoHist,delta);
 
 
 % Compare the results

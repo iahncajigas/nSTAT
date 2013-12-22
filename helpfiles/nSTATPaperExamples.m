@@ -1137,6 +1137,7 @@ end
 % reduced BIC across the majority of cells and for both animals
 clear Summary;
  numAnimals =2;
+ 
 for n=1:numAnimals
     resData=load(strcat('PlaceCellAnimal',num2str(n),'Results.mat'));
     results = FitResult.fromStructure(resData.resStruct);
@@ -1790,6 +1791,7 @@ end
 
 %     close all;
 %% Experiment 6 - Hybrid Point Process Filter Example 
+% NOTE THIS EXAMPLE WAS NOT INCLUDED IN THE FINAL VERSION OF THE PAPER
 % This example is based on an implementation of the Hybrid Point Process
 % filter described in _General-purpose filter design for neural prosthetic 
 % devices_ by Srinivasan L, Eden UT, Mitter SK, Brown EN in J Neurophysiol.

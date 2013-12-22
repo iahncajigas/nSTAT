@@ -249,8 +249,8 @@ classdef CIF < handle
                 elseif(strcmp(fitType,'binomial'))
                     cifObj.lambdaDelta = simplify(exp(beta*cifObj.varIn  + cifObj.histCoeffs*cifObj.histVars)./(1+exp(beta*cifObj.varIn  + cifObj.histCoeffs*cifObj.histVars)));
                     cifObj.lambdaDeltaGamma = simplify(exp(beta*cifObj.varIn  + cifObj.histCoeffVars*cifObj.histVars)./(1+exp(beta*cifObj.varIn  + cifObj.histCoeffVars*cifObj.histVars)));
-                    cifObj.lambdaDeltaFunction = matlabFunction(cifObj.lambdaDelta,'vars',[cifObj.varIn; cifObj.histVars]);
-                    cifObj.lambdaDeltaGammaFunction = matlabFunction(cifObj.lambdaDeltaGamma,'vars',[cifObj.varIn; cifObj.histVars; histCoeffsVarsTrans]);
+                    cifObj.lambdaDeltaFunction = matlabFunction(cifObj.lambdaDelta,'vars',symvar([cifObj.varIn; cifObj.histVars]));
+                    cifObj.lambdaDeltaGammaFunction = matlabFunction(cifObj.lambdaDeltaGamma,'vars',symvar([cifObj.varIn; cifObj.histVars; histCoeffsVarsTrans]));
                 end
                 
                 
