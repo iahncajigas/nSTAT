@@ -462,7 +462,8 @@ classdef DecodingAlgorithms
                 nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
                 nst{c}.setMinTime(minTime);
                 nst{c}.setMaxTime(maxTime);
-                HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+                HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
+%                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
             end
             if(size(gamma,2)==1 && C>1) % if more than 1 cell but only 1 gamma
                 gammaNew(:,c) = gamma;
@@ -473,11 +474,15 @@ classdef DecodingAlgorithms
                 
         else
             for c=1:C
-                HkAll{c} = zeros(N,1);
+%                 HkAll{c} = zeros(N,1);
+                HkAll(:,:,c) = zeros(N,1);
                 gammaNew(c)=0;
             end
             gamma=gammaNew;
             
+        end
+        if(size(gamma,2)~=C)
+            gamma=gamma';
         end
         
 
@@ -605,11 +610,14 @@ classdef DecodingAlgorithms
         end
         % PPAF Update Step 
         %PPDecode_update takes in an object of class CIF
-        function [x_u, W_u,lambdaDeltaMat] = PPDecode_update(x_p, W_p, dN,lambdaIn,binwidth,time_index)
+        function [x_u, W_u,lambdaDeltaMat] = PPDecode_update(x_p, W_p, dN,lambdaIn,binwidth,time_index,WuConv)
                 % The PPDecode update step that finds the state estimate based on new
                 % data
 
                 %Original Code
+                if(nargin<7||isempty(WuConv))
+                    WuConv=[];
+                end
                    clear lambda; 
                 if(isa(lambdaIn,'cell'))
                     lambda = lambdaIn;
@@ -646,15 +654,19 @@ classdef DecodingAlgorithms
                 % Sometimes because of the state space model definition and how information
                 % is integrated from distinct CIFs the sumValMat is very sparse. This
                 % allows us to prevent inverting singular matrices
-                invWp = pinv(W_p);
-                invWu = invWp + sumValMat;
-                invWu = 0.5*(invWu+invWu');
-                Wu = pinv(invWu);
+                if(isempty(WuConv))
+                    invWp = pinv(W_p);
+                    invWu = invWp + sumValMat;
+                    invWu = 0.5*(invWu+invWu');
+                    Wu = pinv(invWu);
 
-                % Make sure that the update covariate is positive definite.
-                [vec,val]=eig(Wu); val(val<=0)=eps;
-                W_u=vec*val*vec';
-                W_u=0.5*(W_u+W_u');
+                    % Make sure that the update covariate is positive definite.
+                    [vec,val]=eig(Wu); val(val<=0)=eps;
+                    W_u=vec*val*vec';
+                    W_u=0.5*(W_u+W_u');
+                else
+                    W_u=0.5*(WuConv+WuConv');
+                end
                 if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
                 % Recompute Wu based on Srinivasan et al March 2007
                     sumValVec=zeros(size(W_p,1),1);
@@ -695,16 +707,23 @@ classdef DecodingAlgorithms
         end       
         %PPDecode_updateLinear takes in a linear representation of the CIF
         %(much faster)
-        function [x_u, W_u,lambdaDeltaMat] = PPDecode_updateLinear(x_p, W_p, dN,mu,beta,fitType,gamma,HkAll,time_index)
+        function [x_u, W_u,lambdaDeltaMat] = PPDecode_updateLinear(x_p, W_p, dN,mu,beta,fitType,gamma,HkAll,time_index,WuConv)
             [C,N]   = size(dN); % N time samples, C cells
+            if(nargin<10|| isempty(WuConv))
+                WuConv=[];
+            end
             if(nargin<9 || isempty(time_index))
                 time_index=1;
             end
             if(nargin<8 || isempty(HkAll))
-                HkAll=cell(C,1);
-                for c=1:C
-                    HkAll{c}=0;
-                end
+                [C,N]=size(dN);
+                numWindows = size(HkAll,2);
+                
+                HkAll = zeros(N,numWindows,C);
+%                 HkAll=cell(C,1);
+%                 for c=1:C
+%                     HkAll{c}=0;
+%                 end
             end
             if(nargin<7 || isempty(gamma))
                 gamma=zeros(1,C);
@@ -713,76 +732,127 @@ classdef DecodingAlgorithms
                 fitType = 'poisson';
             end
 
-
+            
             sumValVec=zeros(size(W_p,1),1);
             sumValMat=zeros(size(W_p,2),size(W_p,2));
             lambdaDeltaMat = zeros(C,1);
-            if(strcmp(fitType,'binomial'))
-                for c=1:C
-                    
-                    if(numel(gamma)==1)
-                        gammaC=gamma;
-                    else 
-                        gammaC=gamma(:,c);
-                    end
-                    linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-                    lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
-                    if(isnan(lambdaDeltaMat(c,1)))
-                        if(linTerm>1e2)
-                            lambdaDeltaMat(c,1)=1;
-                        else
-                            lambdaDeltaMat(c,1)=0;
-                        end
-                    end
-                    sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
-                    sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-                end
-            elseif(strcmp(fitType,'poisson'))
-                for c=1:C                   
-                    if(numel(gamma)==1)
-                        gammaC=gamma;
-                    else 
-                        gammaC=gamma(:,c);
-                    end
-                    linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-                    lambdaDeltaMat(c,1) = exp(linTerm);
-                    if(isnan(lambdaDeltaMat(c,1)))
-                        if(linTerm>1e2)
-                            lambdaDeltaMat(c,1)=1;
-                        else
-                            lambdaDeltaMat(c,1)=0;
-                        end
-                    end
-
-                    sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
-                    sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-                end
+            if(numel(gamma)==1 && gamma==0)
+                gamma = zeros(size(mu))';
             end
-    % 
-            usePInv=1;
-            if(usePInv==1)
-                % Use pinv so that we do a SVD and ignore the zero singular values
-                % Sometimes because of the state space model definition and how information
-                % is integrated from distinct CIFs the sumValMat is very sparse. This
-                % allows us to prevent inverting singular matrices
-                invWp = pinv(W_p);
-                invWu = invWp + sumValMat;
-                invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-                invWu = 0.5*(invWu+invWu');
-                Wu = pinv(invWu);
+            if(strcmp(fitType,'binomial'))
+%                 for c=1:C
+% 
+%                     if(numel(gamma)==1)
+%                         gammaC=gamma;
+%                     else 
+%                         gammaC=gamma(:,c);
+%                     end
+% %                     time_index
+%                     Histterm = HkAll{c};
+%                     if(numel(Histterm)~=1)
+%                         linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
+%                     else
+%                         linTerm = mu(c)+beta(:,c)'*x_p + gammaC'* Histterm';
+%                     end
+%                     lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
+%                     if(isnan(lambdaDeltaMat(c,1)))
+%                         if(linTerm>1e2)
+%                             lambdaDeltaMat(c,1)=1;
+%                         else
+%                             lambdaDeltaMat(c,1)=0;
+%                         end
+%                     end
+%                     sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
+%                     sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
+%                 end
+                Histterm = squeeze(HkAll(time_index,:,:));
+%                 if(~any(gamma~=0))
+%                     Histterm = Histterm';
+%                 end
 
+                if(size(Histterm,2)~=size(mu,1))
+                    Histterm=Histterm';
+                end
+                linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
+                if(isnan(lambdaDeltaMat))
+                    if(linTerm>1e2)
+                        lambdaDeltaMat=1;
+                    else
+                        lambdaDeltaMat=0;
+                    end
+                end
+                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+            elseif(strcmp(fitType,'poisson'))
+%                 for c=1:C                   
+%                     if(numel(gamma)==1)
+%                         gammaC=gamma;
+%                     else 
+%                         gammaC=gamma(:,c);
+%                     end
+%                     linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
+%                     lambdaDeltaMat(c,1) = exp(linTerm);
+%                     if(isnan(lambdaDeltaMat(c,1)))
+%                         if(linTerm>1e2)
+%                             lambdaDeltaMat(c,1)=1;
+%                         else
+%                             lambdaDeltaMat(c,1)=0;
+%                         end
+%                     end
+% 
+%                     sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
+%                     sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
+%                 end
+                Histterm = squeeze(HkAll(time_index,:,:));
+                if(~any(gamma~=0))
+                    Histterm = Histterm';
+                end
+                if(size(Histterm,2)~=size(mu,1))
+                    Histterm=Histterm';
+                end
+                linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                lambdaDeltaMat = exp(linTerm);
+                if(isnan(lambdaDeltaMat))
+                    if(linTerm>1e2)
+                        lambdaDeltaMat=1;
+                    else
+                        lambdaDeltaMat=0;
+                    end
+                end
+                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+            end
+            if(isempty(WuConv))
+                usePInv=0;
+                if(usePInv==1)
+                    % Use pinv so that we do a SVD and ignore the zero singular values
+                    % Sometimes because of the state space model definition and how information
+                    % is integrated from distinct CIFs the sumValMat is very sparse. This
+                    % allows us to prevent inverting singular matrices
+                    invWp = pinv(W_p);
+                    invWu = invWp + sumValMat;
+                    invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
+                    invWu = 0.5*(invWu+invWu');
+                    Wu = pinv(invWu);
+
+                else
+                    invWp = eye(size(W_p))/W_p;
+                    invWu = invWp + sumValMat;
+                    invWu = 0.5*(invWu+invWu');
+                    Wu = eye(size(W_p))/invWu;
+                end 
+               % Make sure that the update covariance is positive definite.
+                [vec,val]=eig(Wu); val(val<=0)=eps;
+                W_u=vec*val*vec';
+                W_u=real(W_u);
+                W_u(isnan(W_u))=0;
+                W_u=0.5*(W_u+W_u');
             else
-                invWp = eye(size(W_p))/W_p;
-                invWu = invWp + sumValMat;
-                invWu = 0.5*(invWu+invWu');
-                Wu = eye(size(W_p))/invWu;
-            end 
-           % Make sure that the update covariance is positive definite.
-            [vec,val]=eig(Wu); val(val<=0)=eps;
-            W_u=vec*val*vec';
-            W_u=real(W_u);
-            W_u(isnan(W_u))=0;
-            W_u=0.5*(W_u+W_u');
+                W_u = WuConv;
+                W_u=0.5*(W_u+W_u');
+            end
+
             if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
                 % Recompute Wu based on Srinivasan et al March 2007
                  sumValVec=zeros(size(W_p,1),1);
@@ -1754,26 +1824,41 @@ classdef DecodingAlgorithms
             x_p     = zeros( size(A,2), N+1 );
             x_u     = zeros( size(A,2), N );
             Pe_p    = zeros( size(A,2), size(A,2), N+1 );
-            Gn      = zeros( size(A,2), size(A,2), N );
+            Gn      = zeros( size(A,2), size(C,1), N );
             Pe_u    = zeros( size(A,2), size(A,2), N );
             
             A1=A(:,:,min(size(A,3),1));
             x_p(:,1)= A1*x0;
             Pv1=Pv(:,:,min(size(Pv,3),1));
             Pe_p(:,:,1) = A1*Px0*A1'+Pv1;
+%             GnConv=[];
 
             for n=1:N
-            [x_u(:,n),   Pe_u(:,:,n)]   = kalman_update( x_p(:,n), Pe_p(:,:,n), C(:,:,min(size(C,3),n)), Pw(:,:,min(size(Pw,3),n)), y(:,n));
-            [x_p(:,n+1), Pe_p(:,:,n+1)] = kalman_predict(x_u(:,n), Pe_u(:,:,n), A(:,:,min(size(A,3),n)), Pv(:,:,min(size(Pv,3),n)));
+                [x_u(:,n),   Pe_u(:,:,n), Gn(:,:,n)]   = kalman_update( x_p(:,n), Pe_p(:,:,n), C(:,:,min(size(C,3),n)), Pw(:,:,min(size(Pw,3),n)), y(:,n),[]);
+                [x_p(:,n+1), Pe_p(:,:,n+1)] = kalman_predict(x_u(:,n), Pe_u(:,:,n), A(:,:,min(size(A,3),n)), Pv(:,:,min(size(Pv,3),n)));
+%                 if(n>1 && isempty(GnConv))
+%                     diffGn = abs(Gn(:,:,n)-Gn(:,:,n-1));
+%                     mAbsdiffGn = max(max(diffGn));
+%                     if(mAbsdiffGn<1e-6)
+%                         GnConv=Gn(:,:,n);
+%                         GnConvIter = n;
+%                     end
+%                     
+%                 end
             end
 
+        
 
 
             %% Kalman Filter Update Equation
-                function [x_u, Pe_u, G] = kalman_update(x_p, Pe_p, C, Pw, y)
+                function [x_u, Pe_u, G] = kalman_update(x_p, Pe_p, C, Pw, y, GnConv)
                 % The Kalman update step that finds the state estimate based on new
                 % data
-                    G       = Pe_p * C' * pinv(C * Pe_p * C' + Pw);
+                    if(nargin<6 || isempty(GnConv))
+                        G       = (Pe_p * C')/(C * Pe_p * C' + Pw);
+                    else 
+                        G       = GnConv;
+                    end
                     x_u     = x_p + G * (y - C * x_p);
                     Pe_u    = Pe_p - G * C * Pe_p;
                     Pe_u    = 0.5*(Pe_u + Pe_u');
@@ -1793,19 +1878,33 @@ classdef DecodingAlgorithms
 
             x_N=zeros(size(x_u));
             P_N=zeros(size(Pe_u));
-            Ln = zeros(size(P_N));
+            Ln = zeros(size(P_N,1),size(P_N,2),size(P_N,3)-1);
             j=fliplr(1:N-1);
             x_N(:,N) = x_u(:,N);
             P_N(:,:,N) = Pe_u(:,:,N);
+%             LnConv = [];
             for n=j
-
-                Ln(:,:,n)=Pe_u(:,:,n)*A(:,:,min(size(A,3),n))'/Pe_p(:,:,n+1);
+%                 if(n<round(N/100) || N<10000)
+                    Ln(:,:,n)=Pe_u(:,:,n)*A(:,:,min(size(A,3),n))'/Pe_p(:,:,n+1);
+%                 elseif(~isempty(LnConv))
+%                     Ln(:,:,n)=LnConv;
+%                 else
+%                     Ln(:,:,n)=Pe_u(:,:,n)*A(:,:,min(size(A,3),n))'/Pe_p(:,:,n+1);
+%                 end
                 x_N(:,n) = x_u(:,n)+Ln(:,:,n)*(x_N(:,n+1)-x_p(:,n+1));
                 P_N(:,:,n)=Pe_u(:,:,n)+Ln(:,:,n)*(P_N(:,:,n+1)-Pe_p(:,:,n+1))*Ln(:,:,n)';
                 P_N(:,:,n) = 0.5*(P_N(:,:,n)+P_N(:,:,n)');
+%                 if(n<(N-1) && isempty(LnConv))
+%                     diffLn = abs(Ln(:,:,n)-Ln(:,:,n+1));
+%                     mAbsdiffLn = max(max(diffLn));
+%                     if(mAbsdiffLn<1e-6)
+%                         LnConv=Ln(:,:,n);
+%                         LnConvIter = n;
+%                     end
+%                 end
             end    
-
-
+   
+        
          end
         function [x_N, P_N,Ln,x_p, Pe_p, x_u, Pe_u] = kalman_smoother(A, C, Pv, Pw, Px0, x0, y)
             %% kalman smoother
@@ -1814,14 +1913,30 @@ classdef DecodingAlgorithms
 
             x_N=zeros(size(x_u));
             P_N=zeros(size(Pe_u));
-            Ln = zeros(size(P_N));
+            Ln = zeros(size(P_N,1),size(P_N,2),size(P_N,3)-1);
             j=fliplr(1:N-1);
             x_N(:,N) = x_u(:,N);
             P_N(:,:,N) = Pe_u(:,:,N);
+%             LnConv = [];
             for n=j
-                Ln(:,:,n)=Pe_u(:,:,n)*A(:,:,min(size(A,3),n))'/Pe_p(:,:,n+1);
+%                 if(n<round(N/100)|| N<10000)
+                    Ln(:,:,n)=Pe_u(:,:,n)*A(:,:,min(size(A,3),n))'/Pe_p(:,:,n+1);
+%                 elseif(~isempty(LnConv))
+%                     Ln(:,:,n)=LnConv;
+%                 else
+%                     Ln(:,:,n)=Pe_u(:,:,n)*A(:,:,min(size(A,3),n))'/Pe_p(:,:,n+1);
+%                 end
                 x_N(:,n) = x_u(:,n)+Ln(:,:,n)*(x_N(:,n+1)-x_p(:,n+1));
                 P_N(:,:,n)=Pe_u(:,:,n)+Ln(:,:,n)*(P_N(:,:,n+1)-Pe_p(:,:,n+1))*Ln(:,:,n)';
+                P_N(:,:,n) = 0.5*(P_N(:,:,n)+P_N(:,:,n)');
+%                 if(n<(N-1) && isempty(LnConv))
+%                     diffLn = abs(Ln(:,:,n)-Ln(:,:,n+1));
+%                     mAbsdiffLn = max(max(diffLn));
+%                     if(mAbsdiffLn<1e-6)
+%                         LnConv=Ln(:,:,n);
+%                         LnConvIter = n;
+%                     end
+%                 end
             end
         end
 
@@ -1864,7 +1979,7 @@ classdef DecodingAlgorithms
                 for k=1:K
                     HkAll{k} = 0;
                 end
-                gammahat=0;
+                gamma0=0;
             end
 
 
@@ -2052,7 +2167,7 @@ classdef DecodingAlgorithms
                     subplot(1,2,1); surf(xK{storeInd});
                     subplot(1,2,2); plot(logll); ylabel('Log Likelihood');
                 end
-                cnt=(cnt+1);
+                
                 dQvals = abs(sqrt(Qhat(:,storeInd))-sqrt(Qhat(:,storeIndM1)));
                 dGamma = abs(gammahat(storeInd,:)-gammahat(storeIndM1,:));
                 dMax = max([dQvals',dGamma]);
@@ -2062,15 +2177,15 @@ classdef DecodingAlgorithms
                 dMaxRel = max([dQRel,dGammaRel]);
 
              
-                
+                cnt=(cnt+1);
                 if(dMax<tolAbs && dMaxRel<tolRel)
                     stoppingCriteria=1;
-                    display(['         EM converged at iteration# ' num2str(cnt) ' b/c change in params was within criteria']);
+                    display(['         EM converged at iteration# ' num2str(cnt-1) ' b/c change in params was within criteria']);
                     negLL=0;
                 end
                 if(abs(dLikelihood(cnt))<llTol  || dLikelihood(cnt)<0)
                     stoppingCriteria=1;
-                    display(['         EM stopped at iteration# ' num2str(cnt) ' b/c change in likelihood was negative']);
+                    display(['         EM stopped at iteration# ' num2str(cnt-1) ' b/c change in likelihood was negative']);
                     negLL=1;
                 end
                 
@@ -3094,7 +3209,8 @@ classdef DecodingAlgorithms
                     nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
                     nst{c}.setMinTime(minTime);
                     nst{c}.setMaxTime(maxTime);
-                    HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+%                     HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+                    HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
                 end
                 if(size(gamma,2)==1 && numCells>1) % if more than 1 cell but only 1 gamma
                     gammaNew(:,c) = gamma;
@@ -3106,7 +3222,8 @@ classdef DecodingAlgorithms
 
         else
             for c=1:numCells
-                HkAll{c} = zeros(N,1);
+%                 HkAll{c} = zeros(N,1);
+                HkAll(:,:,c) = zeros(N,1);
                 gammaNew(c)=0;
             end
             gamma=gammaNew;
@@ -3123,11 +3240,20 @@ classdef DecodingAlgorithms
         
         x_p(:,1) = A*x0;
         W_p(:,:,1) = A * Px0 * A' + Q;
+%         WuConv = [];
         for n=1:N
-            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.mPPCODecode_update(x_p(:,n), W_p(:,:,n),  C, R, y(:,n), alpha(:,min(size(alpha,3),n)),dN,mu,beta,fitType,gamma,HkAll,n);
+            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.mPPCODecode_update(x_p(:,n), W_p(:,:,n),  C, R, y(:,n), alpha(:,min(size(alpha,3),n)),dN,mu,beta,fitType,gamma,HkAll,n,[]);
             if(n<N)
                 [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.mPPCODecode_predict(x_u(:,n), W_u(:,:,n), A(:,:,min(size(A,3),n)), Q(:,:,min(size(Q,3))));
             end
+%             if(n>1 && isempty(WuConv))
+%                 diffWu = abs(W_u(:,:,n)-W_u(:,:,n-1));
+%                 maxWu  = max(max(diffWu));
+%                 if(maxWu<5e-4)
+%                     WuConv = W_u(:,:,n);
+%                     WuConvIter = n;
+%                 end
+%             end
         end
       
         
@@ -3143,16 +3269,20 @@ classdef DecodingAlgorithms
             W_p = .5*(W_p + W_p'); %To help with symmetry of matrix;
 
         end 
-        function [x_u, W_u,lambdaDeltaMat] = mPPCODecode_update(x_p, W_p, C, R, y, alpha, dN,mu,beta,fitType,gamma,HkAll,time_index)
+        function [x_u, W_u,lambdaDeltaMat] = mPPCODecode_update(x_p, W_p, C, R, y, alpha, dN,mu,beta,fitType,gamma,HkAll,time_index,WuConv)
                     [numCells,N]   = size(dN); % N time samples, C cells
+                    if(nargin<13 || isempty(WuConv))
+                        WuConv=[];
+                    end
                     if(nargin<12 || isempty(time_index))
                         time_index=1;
                     end
                     if(nargin<11 || isempty(HkAll))
-                        HkAll=cell(numCells,1);
-                        for c=1:numCells
-                            HkAll{c}=0;
-                        end
+%                         HkAll=cell(numCells,1);
+%                         for c=1:numCells
+%                             HkAll{c}=0;
+%                         end
+                          HkAll = zeros(numCells,1);
                     end
                     if(nargin<10 || isempty(gamma))
                         gamma=zeros(1,numCells);
@@ -3161,94 +3291,138 @@ classdef DecodingAlgorithms
                         fitType = 'poisson';
                     end
 
-
+                    
                     sumValVec=zeros(size(W_p,1),1);
                     sumValMat=zeros(size(W_p,2),size(W_p,2));
                     lambdaDeltaMat = zeros(numCells,1);
-                    if(strcmp(fitType,'binomial'))
-                        for c=1:numCells
-                            if(numel(gamma)==1)
-                                gammaC=gamma;
-                            else 
-                                gammaC=gamma(:,c);
-                            end
-                            linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-                            lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
-                            if(isnan(lambdaDeltaMat(c,1)))
-                                if(linTerm>1e2)
-                                    lambdaDeltaMat(c,1)=1;
-                                else
-                                    lambdaDeltaMat(c,1)=0;
-                                end
-                            end
-                            sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
-                            sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-                        end
-                    elseif(strcmp(fitType,'poisson'))
-                        for c=1:numCells
-                            if(numel(gamma)==1)
-                                gammaC=gamma;
-                            else 
-                                gammaC=gamma(:,c);
-                            end
-                            linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-                            lambdaDeltaMat(c,1) = exp(linTerm);
-                            if(isnan(lambdaDeltaMat(c,1)))
-                                if(linTerm>1e2)
-                                    lambdaDeltaMat(c,1)=1;
-                                else
-                                    lambdaDeltaMat(c,1)=0;
-                                end
-                            end
-
-                            sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
-                            sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-                        end
-                    end
+%                     if(strcmp(fitType,'binomial'))
+%                         for c=1:numCells
+%                             if(numel(gamma)==1)
+%                                 gammaC=gamma;
+%                             else 
+%                                 gammaC=gamma(:,c);
+%                             end
+%                             linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
+%                             lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
+%                             if(isnan(lambdaDeltaMat(c,1)))
+%                                 if(linTerm>1e2)
+%                                     lambdaDeltaMat(c,1)=1;
+%                                 else
+%                                     lambdaDeltaMat(c,1)=0;
+%                                 end
+%                             end
+%                             sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
+%                             sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
+%                         end
+%                     elseif(strcmp(fitType,'poisson'))
+%                         for c=1:numCells
+%                             if(numel(gamma)==1)
+%                                 gammaC=gamma;
+%                             else 
+%                                 gammaC=gamma(:,c);
+%                             end
+%                             linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
+%                             lambdaDeltaMat(c,1) = exp(linTerm);
+%                             if(isnan(lambdaDeltaMat(c,1)))
+%                                 if(linTerm>1e2)
+%                                     lambdaDeltaMat(c,1)=1;
+%                                 else
+%                                     lambdaDeltaMat(c,1)=0;
+%                                 end
+%                             end
+% 
+%                             sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
+%                             sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
+%                         end
+%                     end
             % 
-                    usePInv=0;
-                    if(usePInv==1)
-                        % Use pinv so that we do a SVD and ignore the zero singular values
-                        % Sometimes because of the state space model definition and how information
-                        % is integrated from distinct CIFs the sumValMat is very sparse. This
-                        % allows us to prevent inverting singular matrices
-                        invWp = pinv(W_p);
-                        invR  = eye(size(R))/R;
-                        invWu = invWp + sumValMat +C'*invR*C;
-                        invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-                        Wu = pinv(invWu);
-
-                    else
-                        invWp = eye(size(W_p))/W_p;
-                        invR  = eye(size(R))/R;
-                        invWu = invWp + sumValMat +C'*invR*C;
-                        Wu = eye(size(W_p))/invWu;
-                    end 
-                    Wu = .5*(Wu + Wu'); %To help with symmetry of matrix;
-                    if(any(any(isnan(Wu)))||any(any(isinf(Wu))))
-                        Wu=W_p;
+            if(numel(gamma)==1 && gamma==0)
+                gamma = zeros(size(mu))';
+            end
+            if(strcmp(fitType,'binomial'))
+                    Histterm = squeeze(HkAll(time_index,:,:));
+                    if(~any(gamma~=0))
+                        Histterm = Histterm';
                     end
-                   % Make sure that the update covariance is positive definite.
-                    [vec,val]=eig(Wu); val(val<=0)=eps;
-                    W_u=vec*val*vec';
-                    W_u=real(W_u);
-                    W_u(isnan(W_u))=0;
-                    W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
+                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                    lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
+                    if(isnan(lambdaDeltaMat))
+                        if(linTerm>1e2)
+                            lambdaDeltaMat=1;
+                        else
+                            lambdaDeltaMat=0;
+                        end
+                    end
+                    sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                    sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+            elseif(strcmp(fitType,'poisson'))
+                Histterm = squeeze(HkAll(time_index,:,:));
+                if(~any(gamma~=0))
+                    Histterm = Histterm';
+                end
+                
+                linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                lambdaDeltaMat = exp(linTerm);
+                if(isnan(lambdaDeltaMat))
+                    if(linTerm>1e2)
+                        lambdaDeltaMat=1;
+                    else
+                        lambdaDeltaMat=0;
+                    end
+                end
+                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+            end
+                    if(isempty(WuConv))
+                        usePInv=0;
+                        if(usePInv==1)
+                            % Use pinv so that we do a SVD and ignore the zero singular values
+                            % Sometimes because of the state space model definition and how information
+                            % is integrated from distinct CIFs the sumValMat is very sparse. This
+                            % allows us to prevent inverting singular matrices
+                            invWp = pinv(W_p);
+                            invR  = eye(size(R))/R;
+                            invWu = invWp + sumValMat +C'*invR*C;
+                            invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
+                            Wu = pinv(invWu);
+
+                        else
+                            invWp = eye(size(W_p))/W_p;
+                            invR  = eye(size(R))/R;
+                            invWu = invWp + sumValMat +C'*invR*C;
+                            Wu = eye(size(W_p))/invWu;
+                        end 
+                        Wu = .5*(Wu + Wu'); %To help with symmetry of matrix;
+                        if(any(any(isnan(Wu)))||any(any(isinf(Wu))))
+                            Wu=W_p;
+                        end
+                       % Make sure that the update covariance is positive definite.
+                        [vec,val]=eig(Wu); val(val<=0)=eps;
+                        W_u=vec*val*vec';
+                        W_u=real(W_u);
+                        W_u(isnan(W_u))=0;
+                        W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
+                    else
+                        W_u = WuConv;
+                        invR  = eye(size(R))/R;
+                    end
                     x_u     = x_p + W_u*(sumValVec)+W_u*C'*invR*(y-C*x_p -alpha);
 
 
         end
+      
 
-        function  [xKFinal,WKFinal,Ahat, Qhat, Chat, Rhat,alphahat, logll,nIter,negLL]=KF_EM(y, Ahat0, Qhat0, Chat0, Rhat0, alphahat0, x0,Px0)
+function  [xKFinal,WKFinal,Ahat, Qhat, Chat, Rhat,alphahat, x0hat, Px0hat, logll,nIter,negLL]=KF_EM(y, Ahat0, Qhat0, Chat0, Rhat0, alphahat0, x0, Px0)
             numStates = size(Ahat0,1);
+            
             if(nargin<8 || isempty(Px0))
                 Px0=10e-10*eye(numStates,numStates);
             end
             if(nargin<7 || isempty(x0))
                 x0=zeros(numStates,1);
             end
-          
-  %         tol = 1e-3; %absolute change;
+            
+    %         tol = 1e-3; %absolute change;
             tolAbs = 1e-3;
             tolRel = 1e-3;
             llTol  = 1e-3;
@@ -3268,15 +3442,35 @@ classdef DecodingAlgorithms
             Qhat{1} = Q0;
             Chat{1} = C0;
             Rhat{1} = R0;
+            x0hat{1} = x0;
+            Px0hat{1} = Px0;
             alphahat{1} = alpha0;
+            yOrig=y;
             numToKeep=10;
-          
+            scaledSystem=1;
+            
+            if(scaledSystem==1)
+                Tq = eye(size(Qhat{1}))/(chol(Qhat{1}));
+                Tr = eye(size(Rhat{1}))/(chol(Rhat{1}));
+                Ahat{1}= Tq*Ahat{1}/Tq;
+                Chat{1}= Tr*Chat{1}/Tq;
+                Qhat{1}= Tq*Qhat{1}*Tq';
+                Rhat{1}= Tr*Rhat{1}*Tr';
+                y= Tr*y;
+                x0hat{1} = Tq*x0;
+                Px0hat{1} = Tq*Px0*Tq';
+                alphahat{1}= Tr*alphahat{1};  
+            end
+
             cnt=1;
             dLikelihood(1)=inf;
             negLL=0;
-         
+            IkedaAcc=1;
+            %Forward EM
             stoppingCriteria =0;
-           while(stoppingCriteria~=1 && cnt<=maxIter)
+
+                
+            while(stoppingCriteria~=1 && cnt<=maxIter)
                  storeInd = mod(cnt-1,numToKeep)+1; %make zero-based then mod, then add 1
                  storeIndP1= mod(cnt,numToKeep)+1;
                  storeIndM1= mod(cnt-2,numToKeep)+1;
@@ -3284,14 +3478,43 @@ classdef DecodingAlgorithms
                 disp(['Iteration #' num2str(cnt)]);
                 disp('---------------');
                 
-%                 [x_K,W_K,logll,ExpectationSums]=KF_EStep(A,Q,C,R, y, alpha, x0, Px0)
+                
                 [x_K{storeInd},W_K{storeInd},logll(cnt),ExpectationSums{storeInd}]=...
-                    DecodingAlgorithms.KF_EStep(Ahat{storeInd},Qhat{storeInd},Chat{storeInd},Rhat{storeInd}, y, alphahat{storeInd},x0, Px0);
-
-%                 [Ahat, Qhat, Chat, Rhat, alphahat] = KF_MStep(y,x_K,ExpectationSums)
-                [Ahat{storeIndP1}, Qhat{storeIndP1}, Chat{storeIndP1}, Rhat{storeIndP1}, alphahat{storeIndP1}]= ...
-                    DecodingAlgorithms.KF_MStep(y,x_K{storeInd},ExpectationSums{storeInd});
+                    DecodingAlgorithms.KF_EStep(Ahat{storeInd},Qhat{storeInd},Chat{storeInd},Rhat{storeInd}, y, alphahat{storeInd}, x0hat{storeInd}, Px0hat{storeInd});
+                
+                [Ahat{storeIndP1}, Qhat{storeIndP1}, Chat{storeIndP1}, Rhat{storeIndP1}, alphahat{storeIndP1},x0hat{storeIndP1},Px0hat{storeIndP1}] ...
+                    = DecodingAlgorithms.KF_MStep(y,x_K{storeInd},x0hat{storeInd},ExpectationSums{storeInd});
+              
+                if(IkedaAcc==1)
+                    disp(['****Ikeda Acceleration Step****']);
+                    %y=Cx+alpha+wk wk~Normal with covariance Rk
+                     ykNew = mvnrnd((Chat{storeIndP1}*x_K{storeInd}+alphahat{storeIndP1}*ones(1,size(x_K{storeInd},2)))',Rhat{storeIndP1})';
+                     
+                                    
+                     [x_KNew,W_KNew,logllNew,ExpectationSumsNew]=...
+                        DecodingAlgorithms.KF_EStep(Ahat{storeInd},Qhat{storeInd},Chat{storeInd},Rhat{storeInd}, ykNew, alphahat{storeInd},x0, Px0);
+         
+                     [AhatNew, QhatNew, ChatNew, RhatNew, alphahatNew,x0new,Px0new] ...
+                        = DecodingAlgorithms.KF_MStep(ykNew,x_KNew, x0hat{storeInd}, ExpectationSumsNew);
                
+                    Ahat{storeIndP1} = 2*Ahat{storeIndP1}-AhatNew;
+                    Qhat{storeIndP1} = 2*Qhat{storeIndP1}-QhatNew;
+                    Qhat{storeIndP1} = (Qhat{storeIndP1}+Qhat{storeIndP1}')/2;
+                    Chat{storeIndP1} = 2*Chat{storeIndP1}-ChatNew;
+                    Rhat{storeIndP1} = 2*Rhat{storeIndP1}-RhatNew;
+                    Rhat{storeIndP1} = (Rhat{storeIndP1}+Rhat{storeIndP1}')/2;
+                    alphahat{storeIndP1}=2*alphahat{storeIndP1}-alphahatNew;
+                    
+%                     x0hat{storeIndP1}   = 2*x0hat{storeIndP1} - x0new;
+%                     Px0hat{storeIndP1}  = 2*Px0hat{storeIndP1}- Px0new;
+%                     [V,D] = eig(Px0hat{storeIndP1});
+%                     D(D<0)=1e-9;
+%                     Px0hat{storeIndP1} = V*D*V';
+%                     Px0hat{storeIndP1}  = (Px0hat{storeIndP1}+Px0hat{storeIndP1}')/2;
+                    
+               
+                end
+
                 if(cnt==1)
                     dLikelihood(cnt+1)=inf;
                 else
@@ -3304,14 +3527,18 @@ classdef DecodingAlgorithms
                 end
                 %Plot the progress
 %                 if(mod(cnt,2)==0)
+                if(cnt==1)
                     scrsz = get(0,'ScreenSize');
                     h=figure('OuterPosition',[scrsz(3)*.01 scrsz(4)*.04 scrsz(3)*.98 scrsz(4)*.95]);
+                end
                     figure(h);
+                    time = 0:(size(y,2)-1);
+                    
                     subplot(2,5,[1 2 6 7]); plot(1:cnt,logll,'k','Linewidth', 2); hy=ylabel('Log Likelihood'); hx=xlabel('Iteration'); axis auto;
                     set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold');
-                    subplot(2,5,3:5); hNew=plot(x_K{storeInd}','Linewidth', 2); hy=ylabel('States'); hx=xlabel('time [sample]');
+                    subplot(2,5,3:5); hNew=plot(time, x_K{storeInd}','Linewidth', 2); hy=ylabel('States'); hx=xlabel('time [s]');
                     set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold');
-                    hold on; hOrig=plot(xKInit','--','Linewidth', 2); 
+                    hold on; hOrig=plot(time, xKInit','--','Linewidth', 2); 
                     legend([hOrig(1) hNew(1)],'Initial','Current');
                     
                     subplot(2,5,8); hNew=plot(diag(Qhat{storeInd}),'o','Linewidth', 2); hy=ylabel('Q'); hx=xlabel('Diagonal Entry');
@@ -3323,13 +3550,15 @@ classdef DecodingAlgorithms
                     subplot(2,5,9); hNew=plot(diag(Rhat{storeInd}),'o','Linewidth', 2); hy=ylabel('R'); hx=xlabel('Diagonal Entry');
                     set(gca, 'XTick'       , 1:1:length(diag(Rhat{storeInd})));
                     set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold');
-                    hold on;hOrig=plot(diag(RhatInit),'r.','Linewidth', 2); 
+                    hold on; hOrig=plot(diag(RhatInit),'r.','Linewidth', 2); 
                     legend([hOrig(1) hNew(1)],'Initial','Current');
                     
-                    subplot(2,5,10); imagesc(Rhat{storeInd}); ht=title('R Matrix Image');
+                    
+                    subplot(2,5,10); imagesc(Rhat{storeInd}); ht=title('R Matrix Image'); 
                     set(gca, 'XTick'       , 1:1:length(diag(Rhat{storeInd})), 'YTick', 1:1:length(diag(Rhat{storeInd})));
                     set(ht,'FontName', 'Arial','FontSize',12,'FontWeight','bold');
                     drawnow;
+                    hold off;
 %                 end
                 
                 if(cnt==1)
@@ -3348,38 +3577,40 @@ classdef DecodingAlgorithms
 %                 dGammaRel = max(abs(dGamma./gammahat(storeIndM1,:)));
 %                 dMaxRel = max([dQRel,dGammaRel]);
 
-                 cnt=(cnt+1);
-                
+                 
+                cnt=(cnt+1);
                 if(dMax<tolAbs)
                     stoppingCriteria=1;
-                    display(['         EM converged at iteration# ' num2str(cnt) ' b/c change in params was within criteria']);
+                    display(['         EM converged at iteration# ' num2str(cnt-1) ' b/c change in params was within criteria']);
                     negLL=0;
                 end
             
                 if(abs(dLikelihood(cnt))<llTol  || dLikelihood(cnt)<0)
                     stoppingCriteria=1;
-                    display(['         EM stopped at iteration# ' num2str(cnt) ' b/c change in likelihood was negative']);
+                    display(['         EM stopped at iteration# ' num2str(cnt-1) ' b/c change in likelihood was negative']);
                     negLL=1;
                 end
             
-
-           end
+                
+            end
             
-
-                    
-
-
+            
             maxLLIndex  = find(logll == max(logll),1,'first');
             maxLLIndMod =  mod(maxLLIndex-1,numToKeep)+1;
             if(maxLLIndex==1)
+%                 maxLLIndex=cnt-1;
                 maxLLIndex =1;
                 maxLLIndMod = 1;
             elseif(isempty(maxLLIndex))
                maxLLIndex = 1; 
                maxLLIndMod = 1;
+%             else
+%                maxLLIndMod = mod(maxLLIndex,numToKeep); 
                
             end
             nIter   = cnt-1;  
+%             maxLLIndMod
+           
             xKFinal = x_K{maxLLIndMod};
             WKFinal = W_K{maxLLIndMod};
             Ahat = Ahat{maxLLIndMod};
@@ -3387,24 +3618,69 @@ classdef DecodingAlgorithms
             Chat = Chat{maxLLIndMod};
             Rhat = Rhat{maxLLIndMod};
             alphahat = alphahat{maxLLIndMod};
+            x0hat =x0hat{maxLLIndMod};
+            Px0hat=Px0hat{maxLLIndMod};
+            
+             if(scaledSystem==1)
+               Tq = eye(size(Qhat))/(chol(Q0));
+               Tr = eye(size(Rhat))/(chol(R0));
+               Ahat=Tq\Ahat*Tq;
+               Qhat=(Tq\Qhat)/Tq';
+               Chat=Tr\Chat*Tq;
+               Rhat=(Tr\Rhat)/Tr';
+               alphahat=Tr\alphahat;
+               xKFinal = Tq\xKFinal;
+               x0hat = Tq\x0hat;
+               Px0hat= (Tq\Px0hat)/(Tq');
+               tempWK =zeros(size(WKFinal));
+               for kk=1:size(WKFinal,3)
+                tempWK(:,:,kk)=(Tq\WKFinal(:,:,kk))/Tq';
+               end
+               WKFinal = tempWK;
+             end
+            
             logll = logll(maxLLIndex);
+            ExpectationSumsFinal = ExpectationSums{maxLLIndMod};
+            logllFinal=logll(end);
+            McInfo=100;
+            McCI = 3000;
 
-          
-        end
+%             nIter = [];%[nIter1,nIter2,nIter3];
+  
+            
+            K  = size(y,1); 
+            Dx = size(Ahat,2);
+            sumXkTerms = ExpectationSums{maxLLIndMod}.sumXkTerms;
+            logllobs = logll + Dx*K/2*log(2*pi)+K/2*log(det(Qhat))+ 1/2*trace(pinv(Qhat)*sumXkTerms); 
+                  
+%             InfoMat = DecodingAlgorithms.estimateInfoMat_mPPCO(fitType,xKFinal, WKFinal,Ahat,Qhat,Chat, Rhat,alphahat, muhat, betahat,gammahat,dN,windowTimes, HkAll,delta,ExpectationSums{maxLLIndMod},McInfo);
+%             
+%             
+%             fitResults = DecodingAlgorithms.prepareEMResults(fitType,neuronName,dN,HkAll,xKFinal,WKFinal,Qhat,gammahat,windowTimes,delta,InfoMat,logllobs);
+%             [stimCIs, stimulus] = DecodingAlgorithms.ComputeStimulusCIs(fitType,xKFinal,WkuFinal,delta,McCI);
+%             
+           
+         end
         
-        
+   
+         
         function [x_K,W_K,logll,ExpectationSums]=KF_EStep(A,Q,C,R, y, alpha, x0, Px0)
-            DEBUG = 0;
+             DEBUG = 0;
 
             Dx = size(A,2);
             Dy = size(C,1);
-            
             K=size(y,2);
             [x_p, W_p, x_u, W_u] = DecodingAlgorithms.kalman_filter(A, C, Q, R,Px0, x0, y-alpha*ones(1,size(y,2)));
             
             [x_K, W_K,Lk] = DecodingAlgorithms.kalman_smootherFromFiltered(A, x_p, W_p, x_u, W_u);
 
-
+            %Best estimates of initial states given the data
+            W1G0 = A*Px0*A' + Q;
+            L0=Px0*A'/W1G0;
+            
+            Ex0Gy = x0+L0*(x_K(:,1)-x_p(:,1));        
+            Px0Gy = Px0+L0*(eye(size(W_K(:,:,1)))/(W_K(:,:,1))-eye(size(W1G0))/W1G0)*L0';
+            Px0Gy = (Px0Gy+Px0Gy')/2;
             numStates = size(x_K,1);
             Wku=zeros(numStates,numStates,K,K);
             Tk = zeros(numStates,numStates,K-1);
@@ -3415,7 +3691,7 @@ classdef DecodingAlgorithms
             for u=K:-1:2
                 for k=(u-1):-1:(u-1)
                     Tk(:,:,k)=A;
-%                     Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'*pinv(W_p(:,:,k+1)); %From deJong and MacKinnon 1988
+%                     Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'*pinv(W_p(:,:,k)); %From deJong and MacKinnon 1988
                      Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'/(W_p(:,:,k+1)); %From deJong and MacKinnon 1988
                     Wku(:,:,k,u)=Dk(:,:,k)*Wku(:,:,k+1,u);
                     Wku(:,:,u,k)=Wku(:,:,k,u)';
@@ -3424,6 +3700,7 @@ classdef DecodingAlgorithms
             
             %All terms
             Sxkm1xk = zeros(Dx,Dx);
+            Sxkxkm1 = zeros(Dx,Dx);
             Sxkm1xkm1 = zeros(Dx,Dx);
             Sxkxk = zeros(Dx,Dx);
             Sykyk = zeros(Dy,Dy);
@@ -3431,79 +3708,89 @@ classdef DecodingAlgorithms
             for k=1:K
                 if(k==1)
                     Sxkm1xk   = Sxkm1xk+Px0*A'/W_p(:,:,1)*Wku(:,:,1,1);
-                    Sxkm1xkm1 = Sxkm1xkm1+Px0+x0*x0';   
+                    Sxkm1xkm1 = Sxkm1xkm1+Px0+x0*x0';     
                 else
-                    Sxkm1xk =  Sxkm1xk+Wku(:,:,k-1,k)+x_K(:,k-1)*x_K(:,k)';
-                    Sxkm1xkm1= Sxkm1xkm1+Wku(:,:,k-1,k-1)+x_K(:,k-1)*x_K(:,k-1)';
+%                   
+                      Sxkm1xk =  Sxkm1xk+Wku(:,:,k-1,k)+x_K(:,k-1)*x_K(:,k)';
+                       
+                      Sxkm1xkm1= Sxkm1xkm1+Wku(:,:,k-1,k-1)+x_K(:,k-1)*x_K(:,k-1)';
                 end
                 Sxkxk = Sxkxk+Wku(:,:,k,k)+x_K(:,k)*x_K(:,k)';
                 Sykyk = Sykyk+(y(:,k)-alpha)*(y(:,k)-alpha)';
                 Sxkyk = Sxkyk+x_K(:,k)*(y(:,k)-alpha)';
 
             end
+            Sx0x0 = Px0+x0*x0';
             Sxkxk = 0.5*(Sxkxk+Sxkxk');
             Sykyk = 0.5*(Sykyk+Sykyk');
             sumXkTerms = Sxkxk-A*Sxkm1xk-Sxkm1xk'*A'+A*Sxkm1xkm1*A';
             sumYkTerms = Sykyk - C*Sxkyk - Sxkyk'*C' + C*Sxkxk*C';      
+            Sxkxkm1 = Sxkm1xk';
             
+           
 
             logll = -Dx*K/2*log(2*pi)-K/2*log(det(Q))-Dy*K/2*log(2*pi)...
-                    -K/2*log(det(R))- Dx/2*log(2*pi) -1/2*log(det(Px0)) -Dx/2  ...
-                    -1/2*trace(Q\sumXkTerms) ...
-                    -1/2*trace(R\sumYkTerms);
-            string0 = ['logll: ' num2str(logll)];
-            disp(string0);
-            if(DEBUG==1)
-                string1 = ['-K/2*log(det(Q)):' num2str(-K/2*log(det(Q)))];
-                string2 = ['-K/2*log(det(R)):' num2str(-K/2*log(det(R)))];
-                string3= ['Constants: ' num2str(-Dx*K/2*log(2*pi)-Dy*K/2*log(2*pi)- Dx/2*log(2*pi) -Dx/2 -1/2*log(det(Px0)))];
-                string4 = ['-.5*trace(Q\sumXkTerms): ' num2str(-.5*trace(Q\sumXkTerms))];
-                string5 = ['-.5*trace(R\sumYkTerms): ' num2str(-.5*trace(R\sumYkTerms))];
+                    -K/2*log(det(R))- Dx/2*log(2*pi) -1/2*log(det(Px0))  ...
+                    -1/2*trace((eye(size(Q))/Q)*sumXkTerms) ...
+                    -1/2*trace((eye(size(R))/R)*sumYkTerms) ...
+                    -Dx/2;
+                string0 = ['logll: ' num2str(logll)];
+                disp(string0);
+                if(DEBUG==1)
+                    string1 = ['-K/2*log(det(Q)):' num2str(-K/2*log(det(Q)))];
+                    string11 = ['-K/2*log(det(R)):' num2str(-K/2*log(det(R)))];
+                    string12= ['Constants: ' num2str(-Dx*K/2*log(2*pi)-Dy*K/2*log(2*pi)- Dx/2*log(2*pi) -Dx/2 -1/2*log(det(Px0)))];
+                    string3 = ['-.5*trace(Q\sumXkTerms): ' num2str(-.5*trace(Q\sumXkTerms))];
+                    string4 = ['-.5*trace(R\sumYkTerms): ' num2str(-.5*trace(R\sumYkTerms))];
 
-                disp(string1);
-                disp(['Q=' num2str(diag(Q)')]);
-                disp(string2);
-                disp(['R=' num2str(diag(R)')]);
-                disp(string3);
-                disp(string4);
-                disp(string5);
-                
-            end
+                    disp(string1);
+                    disp(['Q=' num2str(diag(Q)')]);
+                    disp(string11);
+                    disp(['R=' num2str(diag(R)')]);
+                    disp(string12);
+                    disp(string3);
+                    disp(string4);
+                end
 
-            ExpectationSums.Sxkm1xkm1=Sxkm1xkm1;
-            ExpectationSums.Sxkm1xk=Sxkm1xk;
-            ExpectationSums.Sxkxk=Sxkxk;
-            ExpectationSums.Sxkyk=Sxkyk;
-            ExpectationSums.sumXkTerms=sumXkTerms;
-            ExpectationSums.sumYkTerms=sumYkTerms;
+                ExpectationSums.Sxkm1xkm1=Sxkm1xkm1;
+                ExpectationSums.Sxkm1xk=Sxkm1xk;
+                ExpectationSums.Sxkxkm1=Sxkxkm1;
+                ExpectationSums.Sxkxk=Sxkxk;
+                ExpectationSums.Sxkyk=Sxkyk;
+                ExpectationSums.Sykyk=Sykyk;
+                ExpectationSums.sumXkTerms=sumXkTerms;
+                ExpectationSums.sumYkTerms=sumYkTerms;
+                ExpectationSums.Sx0 = Ex0Gy;
+                ExpectationSums.Sx0x0 = Px0Gy + Ex0Gy*Ex0Gy';
 
         end
-        function [Ahat, Qhat, Chat, Rhat, alphahat] = KF_MStep(y,x_K,ExpectationSums)
+        function [Ahat, Qhat, Chat, Rhat, alphahat, x0hat, Px0hat] = KF_MStep(y,x_K,x0, ExpectationSums)
             Sxkm1xkm1=ExpectationSums.Sxkm1xkm1;
-            Sxkm1xk=ExpectationSums.Sxkm1xk;
+            Sxkxkm1=ExpectationSums.Sxkxkm1;
             Sxkxk=ExpectationSums.Sxkxk;
             Sxkyk=ExpectationSums.Sxkyk;
-            sumXkTerms=ExpectationSums.sumXkTerms;
-            sumYkTerms=ExpectationSums.sumYkTerms;
-             K = size(x_K,2);   
-             numStates=size(x_K,1);
-%              Ahat =diag(diag(Sxkm1xk/Sxkm1xkm1));
-%              [V,D] = eig(Ahat); 
-%              D(D>=1)=.99999; % Make sure that the A matrix is stable
-%              Ahat = V*D*V';
-%              Ahat(Ahat>1)=.99999;
-             Ahat = eye(numStates,numStates);
-             Chat = Sxkyk'/Sxkxk;
+            sumXkTerms = ExpectationSums.sumXkTerms;
+            sumYkTerms = ExpectationSums.sumYkTerms;
+            Sx0 = ExpectationSums.Sx0;
+            Sx0x0 = ExpectationSums.Sx0x0;
+
+            K = size(x_K,2);   
+            Ahat = Sxkxkm1/Sxkm1xkm1;
+            Px0hat =(Sx0x0 - x0*Sx0' - Sx0*x0' +(x0*x0'));           
+%              [V,D] = eig(Px0hat);
+%              D(D<0)=1e-9;
+%              Px0hat = V*D*V';
+             Px0hat = (Px0hat+Px0hat')/2;
+             x0hat  = Sx0;
+             Chat = Sxkyk'/Sxkxk;             
              alphahat = sum(y - Chat*x_K,2)/K;
-%              Qhat = 1/K*sumXkTerms;
-             Qhat = diag(diag(1/K*sumXkTerms));
-%              Rhat=diag(diag(1/K*sumYkTerms));
-             Rhat=1/K*sumYkTerms;
-             
-           
-        
+             Qhat=1/K*sumXkTerms;
+             Qhat = (Qhat + Qhat')/2;
+             Rhat = 1/K*sumYkTerms;
+             Rhat = (Rhat + Rhat')/2;            
         end
-        function  [xKFinal,WKFinal,Ahat, Qhat, Chat, Rhat,alphahat, muhat, betahat, gammahat, logll,nIter,negLL]=mPPCO_EM(y,dN, Ahat0, Qhat0, Chat0, Rhat0, alphahat0, mu, beta, fitType,delta, gamma, windowTimes, x0, Px0,MstepMethod)
+        
+        function  [xKFinal,WKFinal,Ahat, Qhat, Chat, Rhat,alphahat, muhat, betahat, gammahat, x0hat, Px0hat, logll,nIter,negLL]=mPPCO_EM(y,dN, Ahat0, Qhat0, Chat0, Rhat0, alphahat0, mu, beta, fitType,delta, gamma, windowTimes, x0, Px0,MstepMethod)
             numStates = size(Ahat0,1);
             if(nargin<16 || isempty(MstepMethod))
                MstepMethod='GLM'; %or NewtonRaphson 
@@ -3542,13 +3829,15 @@ classdef DecodingAlgorithms
                     nst{k} = nspikeTrain( (find(dN(k,:)==1)-1)*delta);
                     nst{k}.setMinTime(minTime);
                     nst{k}.setMaxTime(maxTime);
-                    HkAll{k} = histObj.computeHistory(nst{k}).dataToMatrix;
+%                     HkAll{k} = histObj.computeHistory(nst{k}).dataToMatrix;
+                    HkAll(:,:,k) = histObj.computeHistory(nst{k}).dataToMatrix;
                 end
             else
                 for k=1:K
-                    HkAll{k} = 0;
+%                     HkAll{k} = 0;
+                    HkAll(:,:,k) = 0;
                 end
-                gammahat=0;
+                gamma=0;
             end
 
 
@@ -3573,20 +3862,40 @@ classdef DecodingAlgorithms
             Qhat{1} = Q0;
             Chat{1} = C0;
             Rhat{1} = R0;
+            x0hat{1} = x0;
+            Px0hat{1} = Px0;
             alphahat{1} = alpha0;
             muhat{1} = mu;
             betahat{1} = beta;
             gammahat{1} = gamma;
+            yOrig=y;
             numToKeep=10;
-          
+            scaledSystem=1;
+            
+            if(scaledSystem==1)
+                Tq = eye(size(Qhat{1}))/(chol(Qhat{1}));
+                Tr = eye(size(Rhat{1}))/(chol(Rhat{1}));
+                Ahat{1}= Tq*Ahat{1}/Tq;
+                Chat{1}= Tr*Chat{1}/Tq;
+                Qhat{1}= Tq*Qhat{1}*Tq';
+                Rhat{1}= Tr*Rhat{1}*Tr';
+                y= Tr*y;
+                x0hat{1} = Tq*x0;
+                Px0hat{1} = Tq*Px0*Tq';
+                alphahat{1}= Tr*alphahat{1};  
+                betahat{1}=(betahat{1}'/Tq)';
+            end
+
             cnt=1;
             dLikelihood(1)=inf;
-            x0hat = x0;
+%             x0hat = x0;
             negLL=0;
-         
+            IkedaAcc=1;
             %Forward EM
             stoppingCriteria =0;
 %             logllNew= -inf;
+
+                
             while(stoppingCriteria~=1 && cnt<=maxIter)
                  storeInd = mod(cnt-1,numToKeep)+1; %make zero-based then mod, then add 1
                  storeIndP1= mod(cnt,numToKeep)+1;
@@ -3595,13 +3904,87 @@ classdef DecodingAlgorithms
                 disp(['Iteration #' num2str(cnt)]);
                 disp('---------------');
                 
+                
                 [x_K{storeInd},W_K{storeInd},logll(cnt),ExpectationSums{storeInd}]=...
-                    DecodingAlgorithms.mPPCO_EStep(Ahat{storeInd},Qhat{storeInd},Chat{storeInd},Rhat{storeInd}, y, alphahat{storeInd},dN, muhat{storeInd}, betahat{storeInd},fitType,delta,gammahat{storeInd},HkAll, x0, Px0);
+                    DecodingAlgorithms.mPPCO_EStep(Ahat{storeInd},Qhat{storeInd},Chat{storeInd},Rhat{storeInd}, y, alphahat{storeInd},dN, muhat{storeInd}, betahat{storeInd},fitType,delta,gammahat{storeInd},HkAll, x0hat{storeInd}, Px0hat{storeInd});
+                
+                [Ahat{storeIndP1}, Qhat{storeIndP1}, Chat{storeIndP1}, Rhat{storeIndP1}, alphahat{storeIndP1}, muhat{storeIndP1}, betahat{storeIndP1}, gammahat{storeIndP1},x0hat{storeIndP1},Px0hat{storeIndP1}] ...
+                    = DecodingAlgorithms.mPPCO_MStep(dN, y,x_K{storeInd},W_K{storeInd},x0hat{storeInd},ExpectationSums{storeInd}, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
+              
+                if(IkedaAcc==1)
+                    disp(['****Ikeda Acceleration Step****']);
+                    %y=Cx+alpha+wk wk~Normal with covariance Rk
+                     ykNew = mvnrnd((Chat{storeIndP1}*x_K{storeInd}+alphahat{storeIndP1}*ones(1,size(x_K{storeInd},2)))',Rhat{storeIndP1})';
+                     
+%                      if(gammahat{storeIndP1}==0)% No history effect
+%                         dataMat = [ones(size(y,2),1) x_K{storeInd}']; % design matrix: X 
+%                         coeffsMat = [muhat{storeIndP1} betahat{storeIndP1}']; % coefficient vector: beta
+%                         minTime=0;
+%                         maxTime=(size(dN,2)-1)*delta;
+%                         time=minTime:delta:maxTime;
+%                         clear nstNew;
+%                         for cc=1:length(muhat{storeIndP1})
+%                              tempData  = exp(dataMat*coeffsMat(cc,:)');
+% 
+%                              if(strcmp(fitType,'poisson'))
+%                                  lambdaData = tempData;
+%                              else
+%                                 lambdaData = tempData./(1+tempData); % Conditional Intensity Function for ith cell
+%                              end
+%                              lambda{cc}=Covariate(time,lambdaData./delta, ...
+%                                  '\Lambda(t)','time','s','spikes/sec',...
+%                                  {strcat('\lambda_{',num2str(cc),'}')},{{' ''b'' '}});
+%                              lambda{cc}=lambda{cc}.resample(1/delta);
+% 
+%                              % generate one realization for each cell
+%                              tempSpikeColl{cc} = CIF.simulateCIFByThinningFromLambda(lambda{cc},1);          
+%                              nstNew{cc} = tempSpikeColl{cc}.getNST(1);     % grab the realization
+%                              nstNew{cc}.setName(num2str(cc));              % give each cell a unique name
+% %                              subplot(4,3,[8 11]);
+% %                              h2=lambda{cc}.plot([],{{' ''k'', ''LineWidth'' ,.5'}}); 
+% %                              legend off; hold all; % Plot the CIF
+% 
+%                         end
+%                         
+%                         spikeColl = nstColl(nstNew); % Create a neural spike train collection
+%                      else
+%                          time;
+%                      end
+                     
+                     dNNew=dN;%spikeColl.dataToMatrix';
+                     %dNNew(dNNew>1)=1; % more than one spike per bin will be treated as one spike. In
+                                    % general we should pick delta small enough so that there is
+                                    % only one spike per bin
+                                    
+                                    
+                                    
+                     [x_KNew,W_KNew,logllNew,ExpectationSumsNew]=...
+                        DecodingAlgorithms.mPPCO_EStep(Ahat{storeInd},Qhat{storeInd},Chat{storeInd},Rhat{storeInd}, ykNew, alphahat{storeInd},dNNew, muhat{storeInd}, betahat{storeInd},fitType,delta,gammahat{storeInd},HkAll, x0, Px0);
 
                 
-                [Ahat{storeIndP1}, Qhat{storeIndP1}, Chat{storeIndP1}, Rhat{storeIndP1}, alphahat{storeIndP1}, muhat{storeIndP1}, betahat{storeIndP1}, gammahat{storeIndP1}] ...
-                    = DecodingAlgorithms.mPPCO_MStep(dN, y,x_K{storeInd},W_K{storeInd}, ExpectationSums{storeInd}, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
+                     [AhatNew, QhatNew, ChatNew, RhatNew, alphahatNew, muhatNew, betahatNew, gammahatNew,x0new,Px0new] ...
+                        = DecodingAlgorithms.mPPCO_MStep(dNNew, ykNew,x_KNew,W_KNew, x0hat{storeInd}, ExpectationSumsNew, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
                
+                    Ahat{storeIndP1} = 2*Ahat{storeIndP1}-AhatNew;
+                    Qhat{storeIndP1} = 2*Qhat{storeIndP1}-QhatNew;
+                    Qhat{storeIndP1} = (Qhat{storeIndP1}+Qhat{storeIndP1}')/2;
+                    Chat{storeIndP1} = 2*Chat{storeIndP1}-ChatNew;
+                    Rhat{storeIndP1} = 2*Rhat{storeIndP1}-RhatNew;
+                    Rhat{storeIndP1} = (Rhat{storeIndP1}+Rhat{storeIndP1}')/2;
+                    alphahat{storeIndP1}=2*alphahat{storeIndP1}-alphahatNew;
+%                     muhat{storeIndP1}= 2*muhat{storeIndP1}-muhatNew;
+%                     betahat{storeIndP1} = 2*betahat{storeIndP1}-betahatNew;
+%                     gammahat{storeIndP1}= 2*gammahat{storeIndP1}-gammahatNew;
+%                     x0hat{storeIndP1}   = 2*x0hat{storeIndP1} - x0new;
+%                     Px0hat{storeIndP1}  = 2*Px0hat{storeIndP1}- Px0new;
+%                     [V,D] = eig(Px0hat{storeIndP1});
+%                     D(D<0)=1e-9;
+%                     Px0hat{storeIndP1} = V*D*V';
+%                     Px0hat{storeIndP1}  = (Px0hat{storeIndP1}+Px0hat{storeIndP1}')/2;
+                    
+               
+                end
+
                 if(cnt==1)
                     dLikelihood(cnt+1)=inf;
                 else
@@ -3614,8 +3997,10 @@ classdef DecodingAlgorithms
                 end
                 %Plot the progress
 %                 if(mod(cnt,2)==0)
+                if(cnt==1)
                     scrsz = get(0,'ScreenSize');
                     h=figure('OuterPosition',[scrsz(3)*.01 scrsz(4)*.04 scrsz(3)*.98 scrsz(4)*.95]);
+                end
                     figure(h);
                     time = linspace(minTime,maxTime,size(x_K{storeInd},2));
                     subplot(2,5,[1 2 6 7]); plot(1:cnt,logll,'k','Linewidth', 2); hy=ylabel('Log Likelihood'); hx=xlabel('Iteration'); axis auto;
@@ -3642,6 +4027,7 @@ classdef DecodingAlgorithms
                     set(gca, 'XTick'       , 1:1:length(diag(Rhat{storeInd})), 'YTick', 1:1:length(diag(Rhat{storeInd})));
                     set(ht,'FontName', 'Arial','FontSize',12,'FontWeight','bold');
                     drawnow;
+                    hold off;
 %                 end
                 
                 if(cnt==1)
@@ -3663,23 +4049,25 @@ classdef DecodingAlgorithms
 %                 dGammaRel = max(abs(dGamma./gammahat(storeIndM1,:)));
 %                 dMaxRel = max([dQRel,dGammaRel]);
 
-                 cnt=(cnt+1);
+                cnt=(cnt+1);
                 
                 if(dMax<tolAbs)
                     stoppingCriteria=1;
-                    display(['         EM converged at iteration# ' num2str(cnt) ' b/c change in params was within criteria']);
+                    display(['         EM converged at iteration# ' num2str(cnt-1) ' b/c change in params was within criteria']);
                     negLL=0;
                 end
             
                 if(abs(dLikelihood(cnt))<llTol  || dLikelihood(cnt)<0)
                     stoppingCriteria=1;
-                    display(['         EM stopped at iteration# ' num2str(cnt) ' b/c change in likelihood was negative']);
+                    display(['         EM stopped at iteration# ' num2str(cnt-1) ' b/c change in likelihood was negative']);
                     negLL=1;
                 end
-            
+                
 
             end
-           
+            
+            
+
 
             maxLLIndex  = find(logll == max(logll),1,'first');
             maxLLIndMod =  mod(maxLLIndex-1,numToKeep)+1;
@@ -3696,6 +4084,7 @@ classdef DecodingAlgorithms
             end
             nIter   = cnt-1;  
 %             maxLLIndMod
+           
             xKFinal = x_K{maxLLIndMod};
             WKFinal = W_K{maxLLIndMod};
             Ahat = Ahat{maxLLIndMod};
@@ -3706,6 +4095,28 @@ classdef DecodingAlgorithms
             muhat= muhat{maxLLIndMod};
             betahat = betahat{maxLLIndMod};
             gammahat = gammahat{maxLLIndMod};
+            x0hat =x0hat{maxLLIndMod};
+            Px0hat=Px0hat{maxLLIndMod};
+            
+             if(scaledSystem==1)
+               Tq = eye(size(Qhat))/(chol(Q0));
+               Tr = eye(size(Rhat))/(chol(R0));
+               Ahat=Tq\Ahat*Tq;
+               Qhat=(Tq\Qhat)/Tq';
+               Chat=Tr\Chat*Tq;
+               Rhat=(Tr\Rhat)/Tr';
+               alphahat=Tr\alphahat;
+               xKFinal = Tq\xKFinal;
+               x0hat = Tq\x0hat;
+               Px0hat= (Tq\Px0hat)/(Tq');
+               tempWK =zeros(size(WKFinal));
+               for kk=1:size(WKFinal,3)
+                tempWK(:,:,kk)=(Tq\WKFinal(:,:,kk))/Tq';
+               end
+               WKFinal = tempWK;
+               betahat=(betahat'*Tq)';
+             end
+            
             logll = logll(maxLLIndex);
             ExpectationSumsFinal = ExpectationSums{maxLLIndMod};
             K=size(dN,1);
@@ -3714,7 +4125,7 @@ classdef DecodingAlgorithms
             McInfo=100;
             McCI = 3000;
 
-            nIter = [];%[nIter1,nIter2,nIter3];
+%             nIter = [];%[nIter1,nIter2,nIter3];
   
             
             K  = size(dN,1); 
@@ -3754,6 +4165,13 @@ classdef DecodingAlgorithms
             
             [x_K, W_K,Lk] = DecodingAlgorithms.kalman_smootherFromFiltered(A, x_p, W_p, x_u, W_u);
             
+            %Best estimates of initial states given the data
+            W1G0 = A*Px0*A' + Q;
+            L0=Px0*A'/W1G0;
+            
+            Ex0Gy = x0+L0*(x_K(:,1)-x_p(:,1));        
+            Px0Gy = Px0+L0*(eye(size(W_K(:,:,1)))/(W_K(:,:,1))-eye(size(W1G0))/W1G0)*L0';
+            Px0Gy = (Px0Gy+Px0Gy')/2;
             numStates = size(x_K,1);
             Wku=zeros(numStates,numStates,K,K);
             Tk = zeros(numStates,numStates,K-1);
@@ -3773,6 +4191,7 @@ classdef DecodingAlgorithms
             
             %All terms
             Sxkm1xk = zeros(Dx,Dx);
+            Sxkxkm1 = zeros(Dx,Dx);
             Sxkm1xkm1 = zeros(Dx,Dx);
             Sxkxk = zeros(Dx,Dx);
             Sykyk = zeros(Dy,Dy);
@@ -3792,61 +4211,114 @@ classdef DecodingAlgorithms
                 Sxkyk = Sxkyk+x_K(:,k)*(y(:,k)-alpha)';
 
             end
+            Sx0x0 = Px0+x0*x0';
             Sxkxk = 0.5*(Sxkxk+Sxkxk');
             Sykyk = 0.5*(Sykyk+Sykyk');
             sumXkTerms = Sxkxk-A*Sxkm1xk-Sxkm1xk'*A'+A*Sxkm1xkm1*A';
             sumYkTerms = Sykyk - C*Sxkyk - Sxkyk'*C' + C*Sxkxk*C';      
-
+            Sxkxkm1 = Sxkm1xk';
+            
+%             if(strcmp(fitType,'poisson'))
+%                 sumPPll=0;
+%                 for c=1:numCells
+%                     Hk=HkAll{c};
+%                     for k=1:K
+%                         xk = x_K(:,k);
+%                         if(numel(gamma)==1)
+%                             gammaC=gamma;
+%                         else 
+%                             gammaC=gamma(:,c);
+%                         end
+%                         terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         Wk = W_K(:,:,k);
+%                         ld = exp(terms);
+%                         bt = beta(:,c);
+%                         ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*Wk);
+%                         ExplogLD = terms;
+%                         sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+%                     end
+%                   
+%                             
+%                 end
+%             elseif(strcmp(fitType,'binomial'))
+%                 sumPPll=0;
+%                 for c=1:numCells
+%                     Hk=HkAll{c};
+%                     for k=1:K
+%                         xk = x_K(:,k);
+%                         if(numel(gamma)==1)
+%                             gammaC=gamma;
+%                         else 
+%                             gammaC=gamma(:,c);
+%                         end
+%                         terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         Wk = W_K(:,:,k);
+%                         ld = exp(terms)./(1+exp(terms));
+%                         bt = beta(:,c);
+%                         ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*(1-ld)*(1-2*ld)*Wk);
+%                         ExplogLD = log(ld)+0.5*trace(-(bt*bt'*ld*(1-ld))*Wk);
+%                         sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+%                     end
+%                   
+%                             
+%                 end
+%             end
+            %Vectorize for loop over cells
             if(strcmp(fitType,'poisson'))
                 sumPPll=0;
-                for c=1:numCells
-                    Hk=HkAll{c};
-                    for k=1:K
-                        xk = x_K(:,k);
-                        if(numel(gamma)==1)
-                            gammaC=gamma;
-                        else 
-                            gammaC=gamma(:,c);
-                        end
-                        terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
-                        Wk = W_K(:,:,k);
-                        ld = exp(terms);
-                        bt = beta(:,c);
-                        ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*Wk);
-                        ExplogLD = terms;
-                        sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
-                    end
-                  
-                            
+                for k=1:K
+                   Hk=squeeze(HkAll(k,:,:)); 
+                   if(size(Hk,1)==numCells)
+                       Hk = Hk';
+                   end
+                   xk = x_K(:,k);
+                   if(numel(gamma)==1)
+                        gammaC=repmat(gamma,1,numCells);
+                   else 
+                        gammaC=gamma;
+                   end
+                   terms=mu+beta'*xk+diag(gammaC'*Hk);
+                   Wk = W_K(:,:,k);
+                   ld = exp(terms);
+                   bt = beta;
+                   ExplambdaDelta =ld+0.5*(ld.*diag((bt'*Wk*bt)));
+                   ExplogLD = terms;
+                   sumPPll=sumPPll+sum(dN(:,k).*ExplogLD - ExplambdaDelta);
+                        
                 end
+                
+            %Vectorize over number of cells
             elseif(strcmp(fitType,'binomial'))
                 sumPPll=0;
-                for c=1:numCells
-                    Hk=HkAll{c};
-                    for k=1:K
-                        xk = x_K(:,k);
-                        if(numel(gamma)==1)
-                            gammaC=gamma;
-                        else 
-                            gammaC=gamma(:,c);
-                        end
-                        terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
-                        Wk = W_K(:,:,k);
-                        ld = exp(terms)./(1+exp(terms));
-                        bt = beta(:,c);
-                        ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*(1-ld)*(1-2*ld)*Wk);
-                        ExplogLD = log(ld)+0.5*trace(-(bt*bt'*ld*(1-ld))*Wk);
-                        sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+                for k=1:K
+                    Hk=squeeze(HkAll(k,:,:)); 
+                    if(size(Hk,1)==numCells)
+                       Hk = Hk';
                     end
-                  
-                            
+                    xk = x_K(:,k);
+                    if(numel(gamma)==1)
+                        gammaC=repmat(gamma,1,numCells);
+                    else 
+                        gammaC=gamma;
+                   end
+                   terms=mu+beta'*xk+diag(gammaC'*Hk);
+                   Wk = W_K(:,:,k);
+                   ld = exp(terms)./(1+exp(terms));
+                   bt = beta;     
+                   ExplambdaDelta = ld+0.5*(ld.*(1-ld).*(1-2.*ld)).*diag((bt'*Wk*bt));
+                   ExplogLD = log(ld)+0.5*(-ld.*(1-ld)).*diag(bt'*Wk*bt);
+                   sumPPll=sumPPll+sum(dN(:,k).*ExplogLD - ExplambdaDelta); 
+                    
                 end
+
+                
             end
 
-            logll = -Dx*K/2*log(2*pi)-K/2*log(det(Q))-Dy*K/2*log(2*pi)...
-                    -K/2*log(det(R))- Dx/2*log(2*pi) -1/2*log(det(Px0)) -Dx/2  ...
-                    +sumPPll - 1/2*trace(pinv(Q)*sumXkTerms) ...
-                    -1/2*trace(pinv(R)*sumYkTerms);
+            logll = -Dx*K/2*log(2*pi)-K/2*log(det(Q))-Dy*K/2*log(2*pi) ...
+                    -K/2*log(det(R))- Dx/2*log(2*pi) -1/2*log(det(Px0))  ...
+                    +sumPPll - 1/2*trace((eye(size(Q))/Q)*sumXkTerms) ...
+                    -1/2*trace((eye(size(R))/R)*sumYkTerms) ...
+                    -Dx/2;
                 string0 = ['logll: ' num2str(logll)];
                 disp(string0);
                 if(DEBUG==1)
@@ -3869,32 +4341,56 @@ classdef DecodingAlgorithms
 
                 ExpectationSums.Sxkm1xkm1=Sxkm1xkm1;
                 ExpectationSums.Sxkm1xk=Sxkm1xk;
+                ExpectationSums.Sxkxkm1=Sxkxkm1;
                 ExpectationSums.Sxkxk=Sxkxk;
                 ExpectationSums.Sxkyk=Sxkyk;
+                ExpectationSums.Sykyk=Sykyk;
                 ExpectationSums.sumXkTerms=sumXkTerms;
                 ExpectationSums.sumYkTerms=sumYkTerms;
                 ExpectationSums.sumPPll=sumPPll;
+                ExpectationSums.Sx0 = Ex0Gy;
+                ExpectationSums.Sx0x0 = Px0Gy + Ex0Gy*Ex0Gy';
 
         end
-        function [Ahat, Qhat, Chat, Rhat, alphahat, muhat_new, betahat_new, gammahat_new] = mPPCO_MStep(dN, y,x_K,W_K,ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes, HkAll,MstepMethod)
-            if(nargin<12 || isempty(MstepMethod))
+        function [Ahat, Qhat, Chat, Rhat, alphahat, muhat_new, betahat_new, gammahat_new, x0hat, Px0hat] = mPPCO_MStep(dN, y,x_K,W_K,x0, ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes, HkAll,MstepMethod)
+            if(nargin<13 || isempty(MstepMethod))
                 MstepMethod = 'GLM'; %GLM or NewtonRaphson
             end
             Sxkm1xkm1=ExpectationSums.Sxkm1xkm1;
             Sxkm1xk=ExpectationSums.Sxkm1xk;
+            Sxkxkm1=ExpectationSums.Sxkxkm1;
             Sxkxk=ExpectationSums.Sxkxk;
             Sxkyk=ExpectationSums.Sxkyk;
-            sumXkTerms=ExpectationSums.sumXkTerms;
-            sumYkTerms=ExpectationSums.sumYkTerms;
+            Sykyk=ExpectationSums.Sykyk;
+            sumXkTerms = ExpectationSums.sumXkTerms;
+            sumYkTerms = ExpectationSums.sumYkTerms;
+            Sx0 = ExpectationSums.Sx0;
+            Sx0x0 = ExpectationSums.Sx0x0;
+            
+%             sumXkTerms = Sxkxk-A*Sxkm1xk-Sxkm1xk'*A'+A*Sxkm1xkm1*A';
+%             sumYkTerms = Sykyk - C*Sxkyk - Sxkyk'*C' + C*Sxkxk*C';   
 %             sumPPll=ExpectationSums.sumPPll;
              K = size(x_K,2);   
              numCells=size(dN,1);
              numStates = size(x_K,1);
+             Ahat = Sxkxkm1/Sxkm1xkm1;
+             
+             Px0hat =(Sx0x0 - x0*Sx0' - Sx0*x0' +(x0*x0'));
+             
+%              [V,D] = eig(Px0hat);
+%              D(D<0)=1e-9;
+%              Px0hat = V*D*V';
+             Px0hat = (Px0hat+Px0hat')/2;
+%              Px0hat = diag(diag(Px0hat));
+             x0hat  = Sx0;
+%              x0hat=
+%              x0hat=
+%              Px0hat=
 %              Ahat =diag(diag(Sxkm1xk/Sxkm1xkm1));
 %              [V,D] = eig(Ahat); 
 %              D(D>=1)=.99999; % Make sure that the A matrix is stable
 %              Ahat = V*D*V';
-             Ahat = eye(numStates,numStates);
+%              Ahat = eye(numStates,numStates);
         
              
 %              Ahat = diag(diag(Sxkm1xk/Sxkm1xkm1)); %Force A to be diagonal
@@ -3902,9 +4398,12 @@ classdef DecodingAlgorithms
              Chat = Sxkyk'/Sxkxk;
              
              alphahat = sum(y - Chat*x_K,2)/K;
-%              Qhat=1/K*sumXkTerms;
-             Qhat = diag(diag(1/K*sumXkTerms));
+             Qhat=1/K*sumXkTerms;
+             Qhat = (Qhat + Qhat')/2;
+             
+%              Qhat = diag(diag(1/K*sumXkTerms));
              Rhat = 1/K*sumYkTerms;
+             Rhat = (Rhat + Rhat')/2;
 %              Rhat=diag(diag(1/K*sumYkTerms));
              
              betahat_new =betahat;
@@ -3991,7 +4490,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(betahat_new(:,c),1),1);
                             jacQ =zeros(size(betahat_new(:,c),1),size(betahat_new(:,c),1));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 xk = x_K(:,k);
                                 if(numel(gammahat)==1)
@@ -4031,7 +4531,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(betahat_new(:,c),1),1);
                             jacQ =zeros(size(betahat_new(:,c),1),size(betahat_new(:,c),1));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 xk = x_K(:,k);                    
                                 if(numel(gammahat)==1)
@@ -4126,7 +4627,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(muhat_new(c),2),1);
                             jacQ =zeros(size(muhat_new(c),2),size(muhat_new(c),2));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 if(numel(gammahat)==1)
                                     gammaC=gammahat;
@@ -4148,7 +4650,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(muhat_new(c),2),1);
                             jacQ =zeros(size(muhat_new(c),2),size(muhat_new(c),2));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 if(numel(gammahat)==1)
                                     gammaC=gammahat;
@@ -4179,7 +4682,7 @@ classdef DecodingAlgorithms
 
                         end
                         mabsDiff = max(abs(muhat_newTemp - muhat_new(c)));
-                        if(mabsDiff<10^-3)
+                        if(mabsDiff<10^-2)
                             converged=1;
                         end
                         muhat_new(c)=muhat_newTemp;
@@ -4200,7 +4703,8 @@ classdef DecodingAlgorithms
                                 gradQ=zeros(size(gammahat_new(c),2),1);
                                 jacQ =zeros(size(gammahat_new(c),2),size(gammahat_new(c),2));
                                 for k=1:K
-                                    Hk=HkAll{c};
+%                                     Hk=HkAll{c};
+                                    Hk = squeeze(HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
                                     if(numel(gammahat)==1)
                                         gammaC=gammahat;
@@ -4222,7 +4726,8 @@ classdef DecodingAlgorithms
                                 gradQ=zeros(size(gammahat_new(c),2),1);
                                 jacQ =zeros(size(gammahat_new(c),2),size(gammahat_new(c),2));
                                 for k=1:K
-                                    Hk=HkAll{c};
+%                                     Hk=HkAll{c};
+                                    Hk = squeeze(HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
                                     if(numel(gammahat)==1)
                                         gammaC=gammahat;
@@ -4255,7 +4760,7 @@ classdef DecodingAlgorithms
 
                             end
                             mabsDiff = max(abs(gammahat_newTemp - gammahat_new(:,c)));
-                            if(mabsDiff<10^-3)
+                            if(mabsDiff<10^-2)
                                 converged=1;
                             end
                             gammahat_new(:,c)=gammahat_newTemp;
@@ -4442,10 +4947,696 @@ classdef DecodingAlgorithms
 
 
         end
-        function  [xKFinal,WKFinal,Ahat, Qhat, muhat, betahat, gammahat, logll,nIter,negLL]=PP_EM(dN, Ahat0, Qhat0, mu, beta, fitType,delta, gamma, windowTimes, x0, Px0,MstepMethod)
+%         function  [xKFinal,WKFinal,Ahat, Qhat, muhat, betahat, gammahat, logll,nIter,negLL]=PP_EM(dN, Ahat0, Qhat0, mu, beta, fitType,delta, gamma, windowTimes, x0, Px0,MstepMethod)
+%             numStates = size(Ahat0,1);
+%             if(nargin<12 || isempty(MstepMethod))
+%                MstepMethod='GLM'; %GLM or NewtonRaphson 
+%             end
+%             if(nargin<11 || isempty(Px0))
+%                 Px0=10e-10*eye(numStates,numStates);
+%             end
+%             if(nargin<10 || isempty(x0))
+%                 x0=zeros(numStates,1);
+%             end
+%             
+%             if(nargin<9 || isempty(windowTimes))
+%                 if(isempty(gamma))
+%                     windowTimes =[];
+%                 else
+%     %                 numWindows =length(gamma0)+1; 
+%                     windowTimes = 0:delta:(length(gamma)+1)*delta;
+%                 end
+%             end
+%             if(nargin<8)
+%                 gamma=[];
+%             end
+%             if(nargin<7 || isempty(delta))
+%                 delta = .001;
+%             end
+%             if(nargin<6)
+%                 fitType = 'poisson';
+%             end
+%             
+%             minTime=0;
+%             maxTime=(size(dN,2)-1)*delta;
+%             K=size(dN,1);
+%             if(~isempty(windowTimes))
+%                 histObj = History(windowTimes,minTime,maxTime);
+%                 for k=1:K
+%                     nst{k} = nspikeTrain( (find(dN(k,:)==1)-1)*delta);
+%                     nst{k}.setMinTime(minTime);
+%                     nst{k}.setMaxTime(maxTime);
+%                     HkAll{k} = histObj.computeHistory(nst{k}).dataToMatrix;
+%                 end
+%             else
+%                 for k=1:K
+%                     HkAll{k} = 0;
+%                 end
+%                 gammahat=0;
+%             end
+% 
+% 
+% 
+%     %         tol = 1e-3; %absolute change;
+%             tolAbs = 1e-3;
+%             tolRel = 1e-3;
+%             llTol  = 1e-3;
+%             cnt=1;
+% 
+%             maxIter = 100;
+% 
+%             
+%             A0 = Ahat0;
+%             Q0 = Qhat0;
+%                       
+%             Ahat{1} = A0;
+%             Qhat{1} = Q0;
+%             muhat{1} = mu;
+%             betahat{1} = beta;
+%             gammahat{1} = gamma;
+%             numToKeep=10;
+%           
+%             cnt=1;
+%             dLikelihood(1)=inf;
+%             x0hat = x0;
+%             negLL=0;
+%          
+%             stoppingCriteria =0;
+%             while(stoppingCriteria~=1 && cnt<=maxIter)
+%                  storeInd = mod(cnt-1,numToKeep)+1; %make zero-based then mod, then add 1
+%                  storeIndP1= mod(cnt,numToKeep)+1;
+%                  storeIndM1= mod(cnt-2,numToKeep)+1;
+%                 disp('---------------');
+%                 disp(['Iteration #' num2str(cnt)]);
+%                 disp('---------------');
+% %                 [x_K,W_K,logll,ExpectationSums]=PP_EStep(A,Q,dN, mu, beta,fitType,delta,gamma,windowTimes, HkAll, x0,Px0)
+%                 [x_K{storeInd},W_K{storeInd},logll(cnt),ExpectationSums{storeInd}]=...
+%                     DecodingAlgorithms.PP_EStep(Ahat{storeInd},Qhat{storeInd},dN, muhat{storeInd}, betahat{storeInd},fitType,delta,gammahat{storeInd},windowTimes,HkAll, x0, Px0);
+% 
+% %                 [Ahat, Qhat, muhat, betahat, gammahat] = p(dN,x_K,W_K,ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes,HkAll,MstepMethod)
+%                 [Ahat{storeIndP1}, Qhat{storeIndP1}, muhat{storeIndP1}, betahat{storeIndP1}, gammahat{storeIndP1}]= ...
+%                     DecodingAlgorithms.PP_MStep(dN,x_K{storeInd},W_K{storeInd}, ExpectationSums{storeInd}, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
+%                
+%                 if(cnt==1)
+%                     dLikelihood(cnt+1)=inf;
+%                 else
+%                     dLikelihood(cnt+1)=(logll(cnt)-logll(cnt-1));%./abs(logll(cnt-1));
+%                 end
+%                 if(cnt==1)
+%                     QhatInit = Qhat{1};
+%                     xKInit = x_K{1};
+%                 end
+%                 %Plot the progress
+% %                 if(mod(cnt,2)==0)
+%                     
+%                     scrsz = get(0,'ScreenSize');
+%                     h=figure('OuterPosition',[scrsz(3)*.01 scrsz(4)*.04 scrsz(3)*.98 scrsz(4)*.95]);
+%                     figure(h);
+%                     time = linspace(minTime,maxTime,size(x_K{storeInd},2));
+%                     subplot(2,4,[1 2 5 6]); plot(1:cnt,logll,'k','Linewidth', 2); hy=ylabel('Log Likelihood'); hx=xlabel('Iteration'); axis auto;
+%                     set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold');
+%                     subplot(2,4,3:4); hNew=plot(time, x_K{storeInd}','Linewidth', 2); hy=ylabel('States'); hx=xlabel('time [s]');
+%                     set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold'); 
+%                     hold on; hOrig=plot(time, xKInit','--','Linewidth', 2); 
+%                     legend([hOrig(1) hNew(1)],'Initial','Current');
+%                   
+%                     
+%                     subplot(2,4,7:8); hNew=plot(diag(Qhat{storeInd}),'o','Linewidth', 2); hy=ylabel('Q'); hx=xlabel('Diagonal Entry');
+%                     set(gca, 'XTick'       , 1:1:length(diag(Qhat{storeInd})));
+%                     set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold');
+%                     hold on; hOrig=plot(diag(QhatInit),'r.','Linewidth', 2);
+%                     legend([hOrig(1) hNew(1)],'Initial','Current');
+%                     drawnow;
+% %                 end
+%                 
+%                 if(cnt==1)
+%                     dMax=inf;
+%                 else
+%                  dQvals = max(max(abs(sqrt(Qhat{storeInd})-sqrt(Qhat{storeIndM1}))));
+%                  dAvals = max(max(abs((Ahat{storeInd})-(Ahat{storeIndM1}))));
+%                  dMuvals = max(abs((muhat{storeInd})-(muhat{storeIndM1})));
+%                  dBetavals = max(max(abs((betahat{storeInd})-(betahat{storeIndM1}))));
+%                  dGammavals = max(max(abs((gammahat{storeInd})-(gammahat{storeIndM1}))));
+%                  dMax = max([dQvals,dAvals,dMuvals,dBetavals,dGammavals]);
+%                 end
+% 
+% 
+%                  cnt=(cnt+1);
+%                 
+%                 if(dMax<tolAbs)
+%                     stoppingCriteria=1;
+%                     display(['         EM converged at iteration# ' num2str(cnt) ' b/c change in params was within criteria']);
+%                     negLL=0;
+%                 end
+%             
+%                 if(abs(dLikelihood(cnt))<llTol  || dLikelihood(cnt)<0)
+%                     stoppingCriteria=1;
+%                     display(['         EM stopped at iteration# ' num2str(cnt) ' b/c change in likelihood was negative']);
+%                     negLL=1;
+%                 end
+%             
+% 
+%             end
+% 
+% 
+%             maxLLIndex  = find(logll == max(logll),1,'first');
+%             maxLLIndMod =  mod(maxLLIndex-1,numToKeep)+1;
+%             if(maxLLIndex==1)
+%                 maxLLIndex =1;
+%                 maxLLIndMod = 1;
+%             elseif(isempty(maxLLIndex))
+%                maxLLIndex = 1; 
+%                maxLLIndMod = 1;
+%                
+%             end
+%             nIter   = cnt-1;  
+%             xKFinal = x_K{maxLLIndMod};
+%             WKFinal = W_K{maxLLIndMod};
+%             Ahat = Ahat{maxLLIndMod};
+%             Qhat = Qhat{maxLLIndMod};
+%             muhat= muhat{maxLLIndMod};
+%             betahat = betahat{maxLLIndMod};
+%             gammahat = gammahat{maxLLIndMod};
+%             logll = logll(maxLLIndex);
+%   
+% 
+%            
+%         end
+%         function [x_K,W_K,logll,ExpectationSums]=PP_EStep(A,Q,dN, mu, beta,fitType,delta,gamma,windowTimes, HkAll, x0,Px0)
+%              DEBUG = 0;
+% 
+%           
+%             [numCells,K]   = size(dN); 
+%             Dx = size(A,2);
+%             
+%             x_p     = zeros( size(A,2), K+1 );
+%             x_u     = zeros( size(A,2), K );
+%             W_p    = zeros( size(A,2),size(A,2), K+1 );
+%             W_u    = zeros( size(A,2),size(A,2), K );
+%             x_p(:,1)= A(:,:)*x0;
+%             W_p(:,:,1)=A*Px0*A' + Q;
+%             
+%             for k=1:K
+%                 [x_u(:,k), W_u(:,:,k)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,k), W_p(:,:,k), dN,mu,beta,fitType,gamma,HkAll,k);
+%                 [x_p(:,k+1), W_p(:,:,k+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,k), W_u(:,:,k), A(:,:,min(size(A,3),k)), Q(:,:,min(size(Q,3))));
+%      
+%             end
+%      
+% %             [x_p, W_p, x_u, W_u] = DecodingAlgorithms.PPDecodeFilterLinear(A, Q, dN,mu,beta,fitType,delta,gamma,windowTimes,x0,Px0);
+%             
+%             [x_K, W_K,Lk] = DecodingAlgorithms.kalman_smootherFromFiltered(A, x_p, W_p, x_u, W_u);
+%             
+%             numStates = size(x_K,1);
+%             Wku=zeros(numStates,numStates,K,K);
+%             Tk = zeros(numStates,numStates,K-1);
+%             for k=1:K
+%                 Wku(:,:,k,k)=W_K(:,:,k);
+%             end
+% 
+%             for u=K:-1:2
+%                 for k=(u-1):-1:(u-1)
+%                     Tk(:,:,k)=A;
+%                     Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'/(W_p(:,:,k+1)); %From deJong and MacKinnon 1988
+%                     Wku(:,:,k,u)=Dk(:,:,k)*Wku(:,:,k+1,u);
+%                     Wku(:,:,u,k)=Wku(:,:,k,u)';
+%                 end
+%             end
+%             
+%             %All terms
+%             Sxkm1xk = zeros(Dx,Dx);
+%             Sxkxkm1 = zeros(Dx,Dx);
+%             Sxkm1xkm1 = zeros(Dx,Dx);
+%             Sxkxk = zeros(Dx,Dx);
+%            for k=1:K
+%                 if(k==1)
+%                     Sxkm1xk   = Sxkm1xk+Px0*A'/W_p(:,:,1)*Wku(:,:,1,1);
+%                     Sxkm1xkm1 = Sxkm1xkm1+Px0+x0*x0';   
+%                 else
+% %                   
+%                       Sxkm1xk =  Sxkm1xk+Wku(:,:,k-1,k)+x_K(:,k-1)*x_K(:,k)';
+%                        
+%                       Sxkm1xkm1= Sxkm1xkm1+Wku(:,:,k-1,k-1)+x_K(:,k-1)*x_K(:,k-1)';
+%                 end
+%                 Sxkxk = Sxkxk+Wku(:,:,k,k)+x_K(:,k)*x_K(:,k)';
+%            end
+%            Sxkxk = 0.5*(Sxkxk+Sxkxk');
+%            Sxkxkm1 = Sxkm1xk';
+%            sumXkTerms = Sxkxk-A*Sxkm1xk-Sxkm1xk'*A'+A*Sxkm1xkm1*A';
+%            
+%            if(strcmp(fitType,'poisson'))
+%                 sumPPll=0;
+%                 for c=1:numCells
+%                     Hk=HkAll{c};
+%                     for k=1:K
+%                         xk = x_K(:,k);
+%                         if(numel(gamma)==1)
+%                             gammaC=gamma;
+%                         else 
+%                             gammaC=gamma(:,c);
+%                         end
+%                         terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         Wk = W_K(:,:,k);
+%                         ld = exp(terms);
+%                         bt = beta(:,c);
+%                         ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*Wk);
+%                         ExplogLD = terms;
+%                         sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+%                     end
+%                   
+%                             
+%                 end
+%             elseif(strcmp(fitType,'binomial'))
+%                 sumPPll=0;
+%                 for c=1:numCells
+%                     Hk=HkAll{c};
+%                     for k=1:K
+%                         xk = x_K(:,k);
+%                         if(numel(gamma)==1)
+%                             gammaC=gamma;
+%                         else 
+%                             gammaC=gamma(:,c);
+%                         end
+%                         terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         Wk = W_K(:,:,k);
+%                         ld = exp(terms)./(1+exp(terms));
+%                         bt = beta(:,c);
+%                         ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*(1-ld)*(1-2*ld)*Wk);
+%                         ExplogLD = log(ld)+0.5*trace(-(bt*bt'*ld*(1-ld))*Wk);
+%                         sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+%                     end
+%                   
+%                             
+%                 end
+%             end
+% 
+%             logll = -Dx*K/2*log(2*pi)-K/2*log(det(Q)) - Dx/2*log(2*pi) -1/2*log(det(Px0)) -Dx/2  ...
+%                     +sumPPll - 1/2*trace(pinv(Q)*sumXkTerms);
+%                     
+%                 string0 = ['logll: ' num2str(logll)];
+%                 disp(string0);
+%                 if(DEBUG==1)
+%                     string1 = ['-K/2*log(det(Q)):' num2str(-K/2*log(det(Q)))];
+%                     string2= ['Constants: ' num2str(-Dx*K/2*log(2*pi)- Dx/2*log(2*pi) -Dx/2 -1/2*log(det(Px0)))];
+%                     string3 = ['SumPPll: ' num2str(sumPPll)];
+%                     string4 = ['-.5*trace(Q\sumXkTerms): ' num2str(-.5*trace(Q\sumXkTerms))];
+%                     
+% 
+%                     disp(string1);
+%                     disp(['Q=' num2str(diag(Q)')]);
+%                     disp(string2);
+%                     disp(string3);
+%                     disp(string4);
+% 
+%                 end
+% 
+%                 ExpectationSums.Sxkm1xkm1=Sxkm1xkm1;
+%                 ExpectationSums.Sxkm1xk=Sxkm1xk;
+%                 ExpectationSums.Sxkxkm1=Sxkxkm1;
+%                 ExpectationSums.Sxkxk=Sxkxk;
+%                 ExpectationSums.sumXkTerms=sumXkTerms;
+%                 ExpectationSums.sumPPll=sumPPll;
+% 
+%         end
+%         function [Ahat, Qhat, muhat, betahat, gammahat] = PP_MStep(dN,x_K,W_K,ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes,HkAll,MstepMethod)
+%             if(nargin<11 || isempty(MstepMethod))
+%                 MstepMethod = 'GLM'; %GLM or NewtonRaphson
+%             end
+%             Sxkm1xkm1=ExpectationSums.Sxkm1xkm1;
+%             Sxkm1xk=ExpectationSums.Sxkm1xk;
+%             Sxkxkm1=ExpectationSums.Sxkxkm1;
+%             Sxkxk=ExpectationSums.Sxkxk;
+%             
+%             sumXkTerms=ExpectationSums.sumXkTerms;
+%             
+%             K = size(x_K,2);   
+%             numCells=size(dN,1);
+%             numStates = size(x_K,1);
+%             Ahat = Sxkxkm1/Sxkm1xkm1;
+% %             Ahat =diag(diag(Sxkxkm1/Sxkm1xkm1));
+% %             [V,D] = eig(Ahat); 
+% %             D(D>=1)=.99999; % Make sure that the A matrix is stable
+% %             Ahat = V*D*V';
+% %             Ahat(Ahat>1)=.99999;
+% %             Ahat = eye(numStates,numStates);
+% %             Qhat = diag(diag(1/K*sumXkTerms));
+%             Qhat = 1/K*sumXkTerms;
+%              
+%             betahat_new =betahat;
+%             gammahat_new = gammahat;
+%             muhat_new = muhat;
+%              
+%             %Compute the new CIF beta using the GLM
+%             if(strcmp(fitType,'poisson'))
+%                 algorithm = 'GLM';
+%             else
+%                 algorithm = 'BNLRCG';
+%             end
+%             
+%             % Estimate params via GLM
+%             if(strcmp(MstepMethod,'GLM'))
+%                 clear c; close all;
+%                 time=(0:length(x_K)-1)*.001;
+%                 labels = cell(1,numStates);
+%                 labels2 = cell(1,numStates+1);
+%                 labels2{1} = 'vel';
+%                 for i=1:numStates
+%                     labels{i} = strcat('v',num2str(i));
+%                     labels2{i+1} = strcat('v',num2str(i));
+%                 end
+%                 vel = Covariate(time,x_K','vel','time','s','m/s',labels);
+%                 baseline = Covariate(time,ones(length(time),1),'Baseline','time','s','',...
+%                     {'constant'});
+%                 for i=1:size(dN,1)
+%                     spikeTimes = time(find(dN(i,:)==1));
+%                     nst{i} = nspikeTrain(spikeTimes);
+%                 end
+%                 nspikeColl = nstColl(nst);
+%                 cc = CovColl({vel,baseline});
+%                 trial = Trial(nspikeColl,cc);
+%                 selfHist = windowTimes ; NeighborHist = []; sampleRate = 1000; 
+%                 clear c;
+%                 
+%                 
+% 
+%                 if(gammahat==0)
+%                     c{1} = TrialConfig({{'Baseline','constant'},labels2},sampleRate,[],NeighborHist); 
+%                 else
+%                     c{1} = TrialConfig({{'Baseline','constant'},labels2},sampleRate,selfHist,NeighborHist); 
+%                 end
+%                 c{1}.setName('Baseline');
+%                 cfgColl= ConfigColl(c);
+%                 warning('OFF');
+% 
+%                 results = Analysis.RunAnalysisForAllNeurons(trial,cfgColl,0,algorithm);
+%                 temp = FitResSummary(results);
+%                 tempCoeffs = squeeze(temp.getCoeffs);
+%                 if(gammahat==0)
+%                     betahat(1:numStates,:) = tempCoeffs(2:(numStates+1),:);
+%                     muhat = tempCoeffs(1,:)';
+%                 else
+%                     betahat(1:numStates,:) = tempCoeffs(2:(numStates+1),:);
+%                     muhat = tempCoeffs(1,:)';
+%                     histTemp = squeeze(temp.getHistCoeffs);
+%                     histTemp = reshape(histTemp, [length(windowTimes)-1 numCells]);
+%                     histTemp(isnan(histTemp))=0;
+%                     gammahat=histTemp;
+%                 end
+%             else
+%                 
+%             % Estimate via Newton-Raphson
+%                  fprintf(['****M-step for beta**** \n']);
+%                  parfor c=1:numCells
+%                      converged=0;
+%                      iter = 1;
+%                      maxIter=100;
+%                      fprintf(['neuron:' num2str(c) ' iter: ']);
+%                      while(~converged && iter<maxIter)
+% 
+%                         if(iter==1)
+%                             fprintf('%d',iter);
+%                         else
+%                             fprintf(',%d',iter);
+%                         end
+%                         if(strcmp(fitType,'poisson'))
+%                             gradQ=zeros(size(betahat_new(:,c),1),1);
+%                             jacQ =zeros(size(betahat_new(:,c),1),size(betahat_new(:,c),1));
+%                             for k=1:K
+%                                 Hk=HkAll{c};
+%                                 Wk = W_K(:,:,k);
+%                                 xk = x_K(:,k);
+%                                 if(numel(gammahat)==1)
+%                                     gammaC=gammahat;
+%                                 else 
+%                                     gammaC=gammahat(:,c);
+%                                 end
+%                                 terms =muhat(c)+betahat_new(:,c)'*xk+gammaC'*Hk(k,:)';
+%                                 ld=exp(terms);
+% 
+%                                 numStates =length(xk);
+%                                 ExplambdaDeltaXk = zeros(numStates,1);
+%                                 ExplambdaDeltaXkXkT = zeros(numStates,numStates);
+%                                 for m=1:numStates
+%                                      sm = zeros(numStates,1);
+%                                      sm(m) =1;
+%                                      bt=betahat_new(:,c);
+%                                      ExplambdaDeltaXk(m) = ld*sm'*xk+...
+%                                          .5*trace(ld*(bt*xk'*sm*bt'+sm*bt'+bt*sm')*Wk);
+%                                     for n=1:m
+%                                         sn = zeros(numStates,1);
+%                                         sn(n) =1; 
+%                                         ExplambdaDeltaXkXkT(n,m) = ld*xk'*sm*sn'*xk+...
+%                                             +trace(ld*(2*bt*xk'*sn*sm'*xk*bt'+bt*xk'*sn*sm'+sn*sm'*xk*bt'+sn*sm')*Wk);
+%                                         if(n~=m)
+%                                             ExplambdaDeltaXkXkT(n,m)=ExplambdaDeltaXkXkT(m,n);
+%                                         end
+%                                     end
+%                                 end
+% 
+%                                 gradQ = gradQ + (dN(c,k)*xk - ExplambdaDeltaXk);
+%                                 jacQ  = jacQ  - ExplambdaDeltaXkXkT;
+%                             end
+% 
+% 
+%                         elseif(strcmp(fitType,'binomial'))
+%                             gradQ=zeros(size(betahat_new(:,c),1),1);
+%                             jacQ =zeros(size(betahat_new(:,c),1),size(betahat_new(:,c),1));
+%                             for k=1:K
+%                                 Hk=HkAll{c};
+%                                 Wk = W_K(:,:,k);
+%                                 xk = x_K(:,k);                    
+%                                 if(numel(gammahat)==1)
+%                                     gammaC=gammahat;
+%                                 else 
+%                                     gammaC=gammahat(:,c);
+%                                 end
+%                                 terms =muhat(c)+betahat_new(:,c)'*xk+gammaC'*Hk(k,:)';
+%                                 ld=exp(terms)./(1+exp(terms));
+% 
+%                                 numStates =length(xk);
+%                                 ExplambdaDeltaXk = zeros(numStates,1);
+%                                 ExplambdaDeltaSqXk = zeros(numStates,1);
+%                                 ExplambdaDeltaXkXkT = zeros(numStates,numStates);
+%                                 ExplambdaDeltaSqXkXkT = zeros(numStates,numStates);
+%                                 ExplambdaDeltaCubedXkXkT = zeros(numStates,numStates);
+%                                 for m=1:numStates
+%                                      sm = zeros(numStates,1);
+%                                      sm(m) =1;
+%                                      bt=betahat_new(:,c);
+%                                      ExplambdaDeltaXk(m) = ld*sm'*xk+...
+%                                          +.5*trace(ld*(bt*xk'*sm*bt'+sm*bt'+bt*sm')*Wk)...
+%                                          -.5*trace((ld^2)*(3*bt*xk'*sm*bt'+sm*bt'+bt*sm')*Wk)...
+%                                          +.5*trace((ld^3)*(2*bt*xk'*sm*bt')*Wk);
+%                                      ExplambdaDeltaSqXk(m) = (ld)^2*sm'*xk+...
+%                                          +trace((ld^2)*(2*bt*xk'*sm*bt'+sm*bt'+bt*sm')*Wk)...
+%                                          -trace((ld^3)*(2*bt*xk'*sm*bt'+3*bt*xk'*sm*bt'+sm*bt'+bt*sm')*Wk)...
+%                                          +trace(3*(ld^4)*(bt*xk'*sm*bt')*Wk);
+% 
+%                                     for n=1:m
+%                                         sn = zeros(numStates,1);
+%                                         sn(n) =1; 
+%                                         ExplambdaDeltaXkXkT(n,m) = ld*xk'*sm*sn'*xk+...
+%                                             +0.5*trace((ld)*(bt*xk'*sn*sm'*xk*bt'+2*sn*sm'*xk*bt'+2*bt*xk'*sn*sm'+2*sn*sm')*Wk)...
+%                                             -0.5*trace((ld)^2*(3*bt*xk'*sn*sm'*xk*bt'+2*sn*sm'*xk*bt'+2*bt*xk'*sn*sm')*Wk)...
+%                                             +0.5*trace((ld)^3*(2*bt*xk'*sn*sm'*xk*bt')*Wk);
+%                                         ExplambdaDeltaSqXkXkT(n,m) = (ld)^2*xk'*sm*sn'*xk+...
+%                                             +trace((ld)^2*(2*bt*xk'*sn*sm'*xk*bt'+2*sn*sm'*xk*bt'+2*bt*xk'*sn*sm'+sn*sm')*Wk)...
+%                                             -trace((ld)^3*(5*bt*xk'*sn*sm'*xk*bt'+2*sn*sm'*xk*bt'+2*bt*xk'*sn*sm')*Wk)...
+%                                             +trace((ld)^4*(3*bt*xk'*sn*sm'*xk*bt')*Wk);
+% 
+%                                         ExplambdaDeltaCubedXkXkT(n,m) = (ld)^3*xk'*sm*sn'*xk+...
+%                                             +0.5*trace((ld)^3*(9*bt*xk'*sn*sm'*xk*bt'+6*sn*sm'*xk*bt'+6*bt*xk'*sn*sm'+2*sn*sm')*Wk)...
+%                                             -0.5*trace((ld)^4*(21*bt*xk'*sn*sm'*xk*bt'+6*sn*sm'*xk*bt'+6*bt*xk'*sn*sm')*Wk)...
+%                                             +0.5*trace((ld)^5*(12*bt*xk'*sn*sm'*xk*bt')*Wk);
+% 
+%                                         if(n~=m)
+%                                             ExplambdaDeltaXkXkT(n,m)=ExplambdaDeltaXkXkT(m,n);
+%                                             ExplambdaDeltaSqXkXkT(n,m)=ExplambdaDeltaSqXkXkT(m,n);
+%                                             ExplambdaDeltaCubedXkXkT(n,m)=ExplambdaDeltaCubedXkXkT(m,n);
+%                                         end
+%                                     end
+%                                 end
+% 
+%                                 gradQ = gradQ + dN(c,k)*x_K(:,k) - (dN(c,k)+1)*ExplambdaDeltaXk+ExplambdaDeltaSqXk;
+%                                 jacQ  = jacQ  + ExplambdaDeltaXkXkT+ExplambdaDeltaSqXkXkT-2*ExplambdaDeltaCubedXkXkT;
+%                             end
+%                         end
+% 
+% 
+%                         if(any(any(isnan(jacQ))) || any(any(isinf(jacQ))))
+%                             betahat_newTemp = betahat_new(:,c);
+%                         else
+%                             betahat_newTemp = (betahat_new(:,c)-jacQ\gradQ);
+%                             if(any(isnan(betahat_newTemp)))
+%                                 betahat_newTemp = betahat_new(:,c);
+% 
+%                             end
+%                         end
+%                         mabsDiff = max(abs(betahat_newTemp - betahat_new(:,c)));
+%                         if(mabsDiff<10^-2)
+%                             converged=1;
+%                         end
+%                         betahat_new(:,c)=betahat_newTemp;
+%                         iter=iter+1;
+%                     end
+%                     fprintf('\n');              
+%                  end 
+% 
+% 
+%                  %Compute the new CIF means
+%                  muhat_new =muhat;
+%                  for c=1:numCells
+%                      converged=0;
+%                      iter = 1;
+%                      maxIter=100;
+%                      while(~converged && iter<maxIter)
+%                         if(strcmp(fitType,'poisson'))
+%                             gradQ=zeros(size(muhat_new(c),2),1);
+%                             jacQ =zeros(size(muhat_new(c),2),size(muhat_new(c),2));
+%                             for k=1:K
+%                                 Hk=HkAll{c};
+%                                 Wk = W_K(:,:,k);
+%                                 if(numel(gammahat)==1)
+%                                     gammaC=gammahat;
+%                                 else 
+%                                     gammaC=gammahat(:,c);
+%                                 end
+%                                 terms=muhat_new(c)+betahat(:,c)'*x_K(:,k)+gammaC'*Hk(k,:)';
+%                                 ld = exp(terms);
+%                                 bt = betahat(:,c);
+%                                 ExplambdaDelta =ld +0.5*trace(ld*bt*bt'*Wk);
+% 
+% 
+%                                 gradQ = gradQ + dN(c,k)' - ExplambdaDelta;
+%                                 jacQ  = jacQ  - ExplambdaDelta;
+%                             end
+% 
+% 
+%                         elseif(strcmp(fitType,'binomial'))
+%                             gradQ=zeros(size(muhat_new(c),2),1);
+%                             jacQ =zeros(size(muhat_new(c),2),size(muhat_new(c),2));
+%                             for k=1:K
+%                                 Hk=HkAll{c};
+%                                 Wk = W_K(:,:,k);
+%                                 if(numel(gammahat)==1)
+%                                     gammaC=gammahat;
+%                                 else 
+%                                     gammaC=gammahat(:,c);
+%                                 end
+%                                 terms=muhat_new(c)+betahat(:,c)'*x_K(:,k)+gammaC'*Hk(k,:)';
+%                                 ld = exp(terms)./(1+exp(terms));
+%                                 bt = betahat(:,c);
+%                                 ExplambdaDelta = ld+0.5*trace(bt*bt'*(ld)*(1-ld)*(1-2*ld)*Wk);
+%                                 ExplambdaDeltaSq = (ld)^2+...
+%                                     0.5*trace((ld)^2*(1-ld)*(2-3*ld)*bt*bt'*Wk);
+%                                 ExplambdaDeltaCubed = (ld)^3+...
+%                                     0.5*trace(3*(ld)^3*(3-7*ld+4*(ld)^2)*bt*bt'*Wk);
+% 
+%                                 gradQ = gradQ + dN(c,k)' -(dN(c,k)+1)*ExplambdaDelta...
+%                                     +ExplambdaDeltaSq;
+%                                 jacQ  = jacQ  - (dN(c,k)+1)*ExplambdaDelta...
+%                                     +(dN(c,k)+3)*ExplambdaDeltaSq...
+%                                     -3*ExplambdaDeltaCubed;
+%                             end
+% 
+%                         end
+%                         muhat_newTemp = (muhat_new(c)'-(1/jacQ)*gradQ)';
+%                         if(any(isnan(muhat_newTemp)))
+%                             muhat_newTemp = muhat_new(c);
+% 
+%                         end
+%                         mabsDiff = max(abs(muhat_newTemp - muhat_new(c)));
+%                         if(mabsDiff<10^-2)
+%                             converged=1;
+%                         end
+%                         muhat_new(c)=muhat_newTemp;
+%                         iter=iter+1;
+%                      end
+% 
+%                 end
+% 
+% %              Compute the history parameters
+%                 gammahat_new = gammahat;
+%                 if(~isempty(windowTimes) && any(any(gammahat_new~=0)))
+%                      for c=1:numCells
+%                          converged=0;
+%                          iter = 1;
+%                          maxIter=100;
+%                          while(~converged && iter<maxIter)
+%                             if(strcmp(fitType,'poisson'))
+%                                 gradQ=zeros(size(gammahat_new(c),2),1);
+%                                 jacQ =zeros(size(gammahat_new(c),2),size(gammahat_new(c),2));
+%                                 for k=1:K
+%                                     Hk=HkAll{c};
+%                                     Wk = W_K(:,:,k);
+%                                     if(numel(gammahat)==1)
+%                                         gammaC=gammahat;
+%                                     else 
+%                                         gammaC=gammahat(:,c);
+%                                     end
+%                                     terms=muhat_new(c)+betahat(:,c)'*x_K(:,k)+gammaC'*Hk(k,:)';
+%                                     ld = exp(terms);
+%                                     bt = betahat(:,c);
+%                                     ExplambdaDelta =ld +0.5*trace(bt*bt'*ld*Wk);
+% 
+% 
+%                                     gradQ = gradQ + (dN(c,k)' - ExplambdaDelta)*Hk;
+%                                     jacQ  = jacQ  - ExplambdaDelta*Hk*Hk';
+%                                 end
+% 
+% 
+%                             elseif(strcmp(fitType,'binomial'))
+%                                 gradQ=zeros(size(gammahat_new(c),2),1);
+%                                 jacQ =zeros(size(gammahat_new(c),2),size(gammahat_new(c),2));
+%                                 for k=1:K
+%                                     Hk=HkAll{c};
+%                                     Wk = W_K(:,:,k);
+%                                     if(numel(gammahat)==1)
+%                                         gammaC=gammahat;
+%                                     else 
+%                                         gammaC=gammahat(:,c);
+%                                     end
+%                                     terms=muhat_new(c)+betahat(:,c)'*x_K(:,k)+gammaC'*Hk(k,:)';
+%                                     ld = exp(terms)./(1+exp(terms));
+%                                     bt = betahat(:,c);
+%                                     ExplambdaDelta =ld...
+%                                         +0.5*trace(bt*bt'*ld*(1-ld)*(1-2*ld)*Wk);
+%                                     ExplambdaDeltaSq=ld^2 ...
+%                                         +trace((ld^2*(1-ld)*(2-3*ld)*bt*bt')*Wk);
+%                                     ExplambdaDeltaCubed=ld^3 ...
+%                                         +0.5*trace((9*(ld^3)*(1-ld)^2*bt*bt'-3*(ld^4)*(1-ld)*bt*bt')*Wk);
+%                                     gradQ = gradQ + (dN(c,k) - (dN(c,k)+1)*ExplambdaDelta+ExplambdaDeltaSq)*Hk;
+%                                     jacQ  = jacQ  + -ExplambdaDelta*(dN(c,k)+1)*Hk*Hk'...
+%                                         +ExplambdaDeltaSq*(dN(c,k)+3)*Hk*Hk'...
+%                                         -ExplambdaDeltaCubed*2*Hk*Hk';
+%                                 end
+% 
+%                             end
+% 
+% 
+%    
+%                             gammahat_newTemp = (gammahat_new(:,c)-(eye(size(Hk,2),size(Hk,2))/jacQ)*gradQ');
+%                             if(any(isnan(gammahat_newTemp)))
+%                                 gammahat_newTemp = gammahat_new(:,c);
+% 
+%                             end
+%                             mabsDiff = max(abs(gammahat_newTemp - gammahat_new(:,c)));
+%                             if(mabsDiff<10^-2)
+%                                 converged=1;
+%                             end
+%                             gammahat_new(:,c)=gammahat_newTemp;
+%                             iter=iter+1;
+%                          end
+% 
+%                     end
+%                 end
+%                 
+%             end
+%            
+%         end
+function  [xKFinal,WKFinal,Ahat, Qhat, muhat, betahat, gammahat, x0hat, Px0hat, logll,nIter,negLL]=PP_EM(dN, Ahat0, Qhat0, mu, beta, fitType,delta, gamma, windowTimes, x0, Px0,MstepMethod)
             numStates = size(Ahat0,1);
             if(nargin<12 || isempty(MstepMethod))
-               MstepMethod='GLM'; %GLM or NewtonRaphson 
+               MstepMethod='GLM'; %or NewtonRaphson 
             end
             if(nargin<11 || isempty(Px0))
                 Px0=10e-10*eye(numStates,numStates);
@@ -4455,7 +5646,7 @@ classdef DecodingAlgorithms
             end
             
             if(nargin<9 || isempty(windowTimes))
-                if(isempty(gamma))
+                if(isempty(gamma)||gamma==0)
                     windowTimes =[];
                 else
     %                 numWindows =length(gamma0)+1; 
@@ -4465,7 +5656,7 @@ classdef DecodingAlgorithms
             if(nargin<8)
                 gamma=[];
             end
-            if(nargin<7 || isempty(delta))
+            if(nargin<11 || isempty(delta))
                 delta = .001;
             end
             if(nargin<6)
@@ -4475,21 +5666,27 @@ classdef DecodingAlgorithms
             minTime=0;
             maxTime=(size(dN,2)-1)*delta;
             K=size(dN,1);
+            N=size(dN,2);
             if(~isempty(windowTimes))
                 histObj = History(windowTimes,minTime,maxTime);
                 for k=1:K
                     nst{k} = nspikeTrain( (find(dN(k,:)==1)-1)*delta);
                     nst{k}.setMinTime(minTime);
                     nst{k}.setMaxTime(maxTime);
-                    HkAll{k} = histObj.computeHistory(nst{k}).dataToMatrix;
+%                     HkAll{k} = histObj.computeHistory(nst{k}).dataToMatrix;
+                    HkAll(:,:,k) = histObj.computeHistory(nst{k}).dataToMatrix;
                 end
+                if(size(gamma,1)==K)
+                    gamma=gamma';
+                end
+                
             else
                 for k=1:K
-                    HkAll{k} = 0;
+                    HkAll(:,:,k) = zeros(N,length(windowTimes)-1);
                 end
-                gammahat=0;
+                gamma=0;
             end
-
+                
 
 
     %         tol = 1e-3; %absolute change;
@@ -4503,20 +5700,33 @@ classdef DecodingAlgorithms
             
             A0 = Ahat0;
             Q0 = Qhat0;
-                      
+           
             Ahat{1} = A0;
             Qhat{1} = Q0;
+            x0hat{1} = x0;
+            Px0hat{1} = Px0;
             muhat{1} = mu;
             betahat{1} = beta;
             gammahat{1} = gamma;
             numToKeep=10;
-          
+            scaledSystem=1;
+            
+            if(scaledSystem==1)
+                Tq = eye(size(Qhat{1}))/(chol(Qhat{1}));
+                Ahat{1}= Tq*Ahat{1}/Tq;
+                Qhat{1}= Tq*Qhat{1}*Tq';
+                x0hat{1} = Tq*x0;
+                Px0hat{1} = Tq*Px0*Tq';
+                betahat{1}=(betahat{1}'/Tq)';
+            end
+
             cnt=1;
             dLikelihood(1)=inf;
-            x0hat = x0;
             negLL=0;
-         
+            IkedaAcc=0;
+            %Forward EM
             stoppingCriteria =0;
+                
             while(stoppingCriteria~=1 && cnt<=maxIter)
                  storeInd = mod(cnt-1,numToKeep)+1; %make zero-based then mod, then add 1
                  storeIndP1= mod(cnt,numToKeep)+1;
@@ -4524,14 +5734,82 @@ classdef DecodingAlgorithms
                 disp('---------------');
                 disp(['Iteration #' num2str(cnt)]);
                 disp('---------------');
-%                 [x_K,W_K,logll,ExpectationSums]=PP_EStep(A,Q,dN, mu, beta,fitType,delta,gamma,windowTimes, HkAll, x0,Px0)
+                
+                
                 [x_K{storeInd},W_K{storeInd},logll(cnt),ExpectationSums{storeInd}]=...
-                    DecodingAlgorithms.PP_EStep(Ahat{storeInd},Qhat{storeInd},dN, muhat{storeInd}, betahat{storeInd},fitType,delta,gammahat{storeInd},windowTimes,HkAll, x0, Px0);
+                    DecodingAlgorithms.PP_EStep(Ahat{storeInd},Qhat{storeInd},dN, muhat{storeInd}, betahat{storeInd},fitType,gammahat{storeInd},HkAll, x0hat{storeInd}, Px0hat{storeInd});
+                
+                [Ahat{storeIndP1}, Qhat{storeIndP1}, muhat{storeIndP1}, betahat{storeIndP1}, gammahat{storeIndP1},x0hat{storeIndP1},Px0hat{storeIndP1}] ...
+                    = DecodingAlgorithms.PP_MStep(dN,x_K{storeInd},W_K{storeInd},x0hat{storeInd},ExpectationSums{storeInd}, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
+              
+                if(IkedaAcc==1)
+                    disp(['****Ikeda Acceleration Step****']);
+                     
+                     if(gammahat{storeIndP1}==0)% No history effect
+                        dataMat = [ones(size(dN,2),1) x_K{storeInd}']; % design matrix: X 
+                        coeffsMat = [muhat{storeIndP1} betahat{storeIndP1}']; % coefficient vector: beta
+                        minTime=0;
+                        maxTime=(size(dN,2)-1)*delta;
+                        time=minTime:delta:maxTime;
+                        clear nstNew;
+                        for cc=1:length(muhat{storeIndP1})
+                             tempData  = exp(dataMat*coeffsMat(cc,:)');
 
-%                 [Ahat, Qhat, muhat, betahat, gammahat] = PP_MStep(dN,x_K,W_K,ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes,HkAll,MstepMethod)
-                [Ahat{storeIndP1}, Qhat{storeIndP1}, muhat{storeIndP1}, betahat{storeIndP1}, gammahat{storeIndP1}]= ...
-                    DecodingAlgorithms.PP_MStep(dN,x_K{storeInd},W_K{storeInd}, ExpectationSums{storeInd}, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
+                             if(strcmp(fitType,'poisson'))
+                                 lambdaData = tempData;
+                             else
+                                lambdaData = tempData./(1+tempData); % Conditional Intensity Function for ith cell
+                             end
+                             lambda{cc}=Covariate(time,lambdaData./delta, ...
+                                 '\Lambda(t)','time','s','spikes/sec',...
+                                 {strcat('\lambda_{',num2str(cc),'}')},{{' ''b'' '}});
+                             lambda{cc}=lambda{cc}.resample(1/delta);
+
+                             % generate one realization for each cell
+                             tempSpikeColl{cc} = CIF.simulateCIFByThinningFromLambda(lambda{cc},1);          
+                             nstNew{cc} = tempSpikeColl{cc}.getNST(1);     % grab the realization
+                             nstNew{cc}.setName(num2str(cc));              % give each cell a unique name
+%                              subplot(4,3,[8 11]);
+%                              h2=lambda{cc}.plot([],{{' ''k'', ''LineWidth'' ,.5'}}); 
+%                              legend off; hold all; % Plot the CIF
+
+                        end
+                        
+                        spikeColl = nstColl(nstNew); % Create a neural spike train collection
+                     else
+                         time;
+                     end
+                     
+                     dNNew=spikeColl.dataToMatrix';
+                     dNNew(dNNew>1)=1; % more than one spike per bin will be treated as one spike. In
+                                    % general we should pick delta small enough so that there is
+                                    % only one spike per bin
+                                    
+                                    
+%                                     [x_K,W_K,logll,ExpectationSums]=PP_EStep(A,Q,dN, mu, beta,fitType,gamma,HkAll, x0, Px0)
+                     [x_KNew,W_KNew,logllNew,ExpectationSumsNew]=...
+                        DecodingAlgorithms.PP_EStep(Ahat{storeInd},Qhat{storeInd},dNNew, muhat{storeInd}, betahat{storeInd},fitType,gammahat{storeInd},HkAll, x0, Px0);
+
+                
+                     [AhatNew, QhatNew, muhatNew, betahatNew, gammahatNew,x0new,Px0new] ...
+                        = DecodingAlgorithms.PP_MStep(dNNew,x_KNew,W_KNew, x0hat{storeInd}, ExpectationSumsNew, fitType,muhat{storeInd},betahat{storeInd}, gammahat{storeInd},windowTimes,HkAll,MstepMethod);
                
+                    Ahat{storeIndP1} = 2*Ahat{storeIndP1}-AhatNew;
+                    Qhat{storeIndP1} = 2*Qhat{storeIndP1}-QhatNew;
+                    Qhat{storeIndP1} = (Qhat{storeIndP1}+Qhat{storeIndP1}')/2;
+                    muhat{storeIndP1}= 2*muhat{storeIndP1}-muhatNew;
+                    betahat{storeIndP1} = 2*betahat{storeIndP1}-betahatNew;
+                    gammahat{storeIndP1}= 2*gammahat{storeIndP1}-gammahatNew;
+%                     x0hat{storeIndP1}   = 2*x0hat{storeIndP1} - x0new;
+%                     Px0hat{storeIndP1}  = 2*Px0hat{storeIndP1}- Px0new;
+%                     [V,D] = eig(Px0hat{storeIndP1});
+%                     D(D<0)=1e-9;
+%                     Px0hat{storeIndP1} = V*D*V';
+%                     Px0hat{storeIndP1}  = (Px0hat{storeIndP1}+Px0hat{storeIndP1}')/2;
+                    
+               
+                end
+
                 if(cnt==1)
                     dLikelihood(cnt+1)=inf;
                 else
@@ -4543,9 +5821,10 @@ classdef DecodingAlgorithms
                 end
                 %Plot the progress
 %                 if(mod(cnt,2)==0)
-                    
+                if(cnt==1)
                     scrsz = get(0,'ScreenSize');
                     h=figure('OuterPosition',[scrsz(3)*.01 scrsz(4)*.04 scrsz(3)*.98 scrsz(4)*.95]);
+                end
                     figure(h);
                     time = linspace(minTime,maxTime,size(x_K{storeInd},2));
                     subplot(2,4,[1 2 5 6]); plot(1:cnt,logll,'k','Linewidth', 2); hy=ylabel('Log Likelihood'); hx=xlabel('Iteration'); axis auto;
@@ -4562,6 +5841,7 @@ classdef DecodingAlgorithms
                     hold on; hOrig=plot(diag(QhatInit),'r.','Linewidth', 2);
                     legend([hOrig(1) hNew(1)],'Initial','Current');
                     drawnow;
+                    hold off;
 %                 end
                 
                 if(cnt==1)
@@ -4575,36 +5855,47 @@ classdef DecodingAlgorithms
                  dMax = max([dQvals,dAvals,dMuvals,dBetavals,dGammavals]);
                 end
 
+% 
+%                 dQRel = max(abs(dQvals./sqrt(Qhat(:,storeIndM1))));
+%                 dGammaRel = max(abs(dGamma./gammahat(storeIndM1,:)));
+%                 dMaxRel = max([dQRel,dGammaRel]);
 
-                 cnt=(cnt+1);
-                
+                 
+                cnt=(cnt+1);
                 if(dMax<tolAbs)
                     stoppingCriteria=1;
-                    display(['         EM converged at iteration# ' num2str(cnt) ' b/c change in params was within criteria']);
+                    display(['         EM converged at iteration# ' num2str(cnt-1) ' b/c change in params was within criteria']);
                     negLL=0;
                 end
             
                 if(abs(dLikelihood(cnt))<llTol  || dLikelihood(cnt)<0)
                     stoppingCriteria=1;
-                    display(['         EM stopped at iteration# ' num2str(cnt) ' b/c change in likelihood was negative']);
+                    display(['         EM stopped at iteration# ' num2str(cnt-1) ' b/c change in likelihood was negative']);
                     negLL=1;
                 end
-            
+                
 
             end
+            
+            
 
 
             maxLLIndex  = find(logll == max(logll),1,'first');
             maxLLIndMod =  mod(maxLLIndex-1,numToKeep)+1;
             if(maxLLIndex==1)
+%                 maxLLIndex=cnt-1;
                 maxLLIndex =1;
                 maxLLIndMod = 1;
             elseif(isempty(maxLLIndex))
                maxLLIndex = 1; 
                maxLLIndMod = 1;
+%             else
+%                maxLLIndMod = mod(maxLLIndex,numToKeep); 
                
             end
             nIter   = cnt-1;  
+%             maxLLIndMod
+           
             xKFinal = x_K{maxLLIndMod};
             WKFinal = W_K{maxLLIndMod};
             Ahat = Ahat{maxLLIndMod};
@@ -4612,15 +5903,54 @@ classdef DecodingAlgorithms
             muhat= muhat{maxLLIndMod};
             betahat = betahat{maxLLIndMod};
             gammahat = gammahat{maxLLIndMod};
+            x0hat =x0hat{maxLLIndMod};
+            Px0hat=Px0hat{maxLLIndMod};
+            
+             if(scaledSystem==1)
+               Tq = eye(size(Qhat))/(chol(Q0));
+               Ahat=Tq\Ahat*Tq;
+               Qhat=(Tq\Qhat)/Tq';
+               xKFinal = Tq\xKFinal;
+               x0hat = Tq\x0hat;
+               Px0hat= (Tq\Px0hat)/(Tq');
+               tempWK =zeros(size(WKFinal));
+               for kk=1:size(WKFinal,3)
+                tempWK(:,:,kk)=(Tq\WKFinal(:,:,kk))/Tq';
+               end
+               WKFinal = tempWK;
+               betahat=(betahat'*Tq)';
+             end
+            
             logll = logll(maxLLIndex);
+            ExpectationSumsFinal = ExpectationSums{maxLLIndMod};
+            K=size(dN,1);
+            SumXkTermsFinal = diag(Qhat(:,:,end))*K;
+            logllFinal=logll(end);
+            McInfo=100;
+            McCI = 3000;
+
+%             nIter = [];%[nIter1,nIter2,nIter3];
   
-
+            
+            K  = size(dN,1); 
+            Dx = size(Ahat,2);
+            sumXkTerms = ExpectationSums{maxLLIndMod}.sumXkTerms;
+            logllobs = logll + Dx*K/2*log(2*pi)+K/2*log(det(Qhat))+ 1/2*trace(pinv(Qhat)*sumXkTerms); 
+                  
+%             InfoMat = DecodingAlgorithms.estimateInfoMat_mPPCO(fitType,xKFinal, WKFinal,Ahat,Qhat,Chat, Rhat,alphahat, muhat, betahat,gammahat,dN,windowTimes, HkAll,delta,ExpectationSums{maxLLIndMod},McInfo);
+%             
+%             
+%             fitResults = DecodingAlgorithms.prepareEMResults(fitType,neuronName,dN,HkAll,xKFinal,WKFinal,Qhat,gammahat,windowTimes,delta,InfoMat,logllobs);
+%             [stimCIs, stimulus] = DecodingAlgorithms.ComputeStimulusCIs(fitType,xKFinal,WkuFinal,delta,McCI);
+%             
            
-        end
-        function [x_K,W_K,logll,ExpectationSums]=PP_EStep(A,Q,dN, mu, beta,fitType,delta,gamma,windowTimes, HkAll, x0,Px0)
-             DEBUG = 0;
-
-          
+         end
+        
+   
+         
+        function [x_K,W_K,logll,ExpectationSums]=PP_EStep(A,Q,dN, mu, beta,fitType,gamma,HkAll, x0, Px0)
+             
+            DEBUG = 0;
             [numCells,K]   = size(dN); 
             Dx = size(A,2);
             
@@ -4630,17 +5960,30 @@ classdef DecodingAlgorithms
             W_u    = zeros( size(A,2),size(A,2), K );
             x_p(:,1)= A(:,:)*x0;
             W_p(:,:,1)=A*Px0*A' + Q;
-            
+%             WuConv=[];
             for k=1:K
-                [x_u(:,k), W_u(:,:,k)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,k), W_p(:,:,k), dN,mu,beta,fitType,gamma,HkAll,k);
+                [x_u(:,k), W_u(:,:,k)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,k), W_p(:,:,k), dN,mu,beta,fitType,gamma,HkAll,k,[]);
                 [x_p(:,k+1), W_p(:,:,k+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,k), W_u(:,:,k), A(:,:,min(size(A,3),k)), Q(:,:,min(size(Q,3))));
-     
+%                 if(k>1 && isempty(WuConv))
+%                     diffWu = abs(W_u(:,:,k)-W_u(:,:,k-1));
+%                     maxWu  = max(max(diffWu));
+%                     if(maxWu<5e-2)
+%                         WuConv = W_u(:,:,k);
+%                         WuConvIter = k;
+%                     end
+%                 end
             end
      
-%             [x_p, W_p, x_u, W_u] = DecodingAlgorithms.PPDecodeFilterLinear(A, Q, dN,mu,beta,fitType,delta,gamma,windowTimes,x0,Px0);
             
             [x_K, W_K,Lk] = DecodingAlgorithms.kalman_smootherFromFiltered(A, x_p, W_p, x_u, W_u);
             
+            %Best estimates of initial states given the data
+            W1G0 = A*Px0*A' + Q;
+            L0=Px0*A'/W1G0;
+            
+            Ex0Gy = x0+L0*(x_K(:,1)-x_p(:,1));        
+            Px0Gy = Px0+L0*(eye(size(W_K(:,:,1)))/(W_K(:,:,1))-eye(size(W1G0))/W1G0)*L0';
+            Px0Gy = (Px0Gy+Px0Gy')/2;
             numStates = size(x_K,1);
             Wku=zeros(numStates,numStates,K,K);
             Tk = zeros(numStates,numStates,K-1);
@@ -4651,7 +5994,8 @@ classdef DecodingAlgorithms
             for u=K:-1:2
                 for k=(u-1):-1:(u-1)
                     Tk(:,:,k)=A;
-                    Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'/(W_p(:,:,k+1)); %From deJong and MacKinnon 1988
+%                     Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'*pinv(W_p(:,:,k)); %From deJong and MacKinnon 1988
+                     Dk(:,:,k)=W_u(:,:,k)*Tk(:,:,k)'/(W_p(:,:,k+1)); %From deJong and MacKinnon 1988
                     Wku(:,:,k,u)=Dk(:,:,k)*Wku(:,:,k+1,u);
                     Wku(:,:,u,k)=Wku(:,:,k,u)';
                 end
@@ -4659,12 +6003,14 @@ classdef DecodingAlgorithms
             
             %All terms
             Sxkm1xk = zeros(Dx,Dx);
+            Sxkxkm1 = zeros(Dx,Dx);
             Sxkm1xkm1 = zeros(Dx,Dx);
             Sxkxk = zeros(Dx,Dx);
-           for k=1:K
+         
+            for k=1:K
                 if(k==1)
                     Sxkm1xk   = Sxkm1xk+Px0*A'/W_p(:,:,1)*Wku(:,:,1,1);
-                    Sxkm1xkm1 = Sxkm1xkm1+Px0+x0*x0';   
+                    Sxkm1xkm1 = Sxkm1xkm1+Px0+x0*x0';     
                 else
 %                   
                       Sxkm1xk =  Sxkm1xk+Wku(:,:,k-1,k)+x_K(:,k-1)*x_K(:,k)';
@@ -4672,104 +6018,224 @@ classdef DecodingAlgorithms
                       Sxkm1xkm1= Sxkm1xkm1+Wku(:,:,k-1,k-1)+x_K(:,k-1)*x_K(:,k-1)';
                 end
                 Sxkxk = Sxkxk+Wku(:,:,k,k)+x_K(:,k)*x_K(:,k)';
-           end
-           Sxkxk = 0.5*(Sxkxk+Sxkxk');
-           sumXkTerms = Sxkxk-A*Sxkm1xk-Sxkm1xk'*A'+A*Sxkm1xkm1*A';
-           
-           if(strcmp(fitType,'poisson'))
+                
+            end
+            Sx0x0 = Px0+x0*x0';
+            Sxkxk = 0.5*(Sxkxk+Sxkxk');
+            sumXkTerms = Sxkxk-A*Sxkm1xk-Sxkm1xk'*A'+A*Sxkm1xkm1*A';
+            Sxkxkm1 = Sxkm1xk';
+            
+%             if(strcmp(fitType,'poisson'))
+%                 sumPPll=0;
+%                 for c=1:numCells
+% %                     Hk=HkAll{c};
+%                     Hk=squeeze(HkAll(k,:,c));
+%                     for k=1:K
+%                         xk = x_K(:,k);
+%                         if(numel(gamma)==1)
+%                             gammaC=gamma;
+%                         else 
+%                             gammaC=gamma(:,c);
+%                         end
+% %                         terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         if(numel(Hk)~=1)
+%                             terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         else
+%                             terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk';
+%                         end
+%                         Wk = W_K(:,:,k);
+%                         ld = exp(terms);
+%                         bt = beta(:,c);
+%                         ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*Wk);
+%                         ExplogLD = terms;
+%                         sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+%                     end
+%                   
+%                             
+%                 end
+%             elseif(strcmp(fitType,'binomial'))
+%                 sumPPll=0;
+%                 for c=1:C
+%                     for k=1:K
+%                         Hk=squeeze(HkAll(k,:,c));
+%                         xk = x_K(:,k);
+%                         if(numel(gamma)==1)
+%                             gammaC=gamma;
+%                         else 
+%                             gammaC=gamma(:,c);
+%                         end
+%                         if(numel(Hk)~=1)
+%                             terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+%                         else
+%                             terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk';
+%                         end
+%                         Wk = W_K(:,:,k);
+%                         ld = exp(terms)./(1+exp(terms));
+%                         bt = beta;
+%                         ExplambdaDelta =sum(ld+0.5*sum(bt'*bt*repmat(ld.*(1-ld).*(1-2.*ld),1,2)*Wk,2));
+%                         ExplogLD = (log(ld)+0.5*sum(bt*bt'*(repmat(ld.*(1-ld),1,size(bt,1))*Wk)')');
+%                         sumPPll=sumPPll+dN(:,k)'*ExplogLD - ExplambdaDelta;
+%                     end
+%                 end
+%                 
+% %                 for c=1:numCells
+% %                     Hk=HkAll{c};
+% %                     for k=1:K
+% %                         xk = x_K(:,k);
+% %                         if(numel(gamma)==1)
+% %                             gammaC=gamma;
+% %                         else 
+% %                             gammaC=gamma(:,c);
+% %                         end
+% %                         if(numel(Hk)~=1)
+% %                             terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
+% %                         else
+% %                             terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk';
+% %                         end
+% %                         Wk = W_K(:,:,k);
+% %                         ld = exp(terms)./(1+exp(terms));
+% %                         bt = beta(:,c);
+% %                         ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*(1-ld)*(1-2*ld)*Wk);
+% %                         ExplogLD = log(ld)+0.5*trace(-(bt*bt'*ld*(1-ld))*Wk);
+% %                         sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+% %                     end
+% %                   
+% %                             
+% %                 end
+%             end
+
+            %Vectorize for loop over cells
+            if(strcmp(fitType,'poisson'))
                 sumPPll=0;
-                for c=1:numCells
-                    Hk=HkAll{c};
-                    for k=1:K
-                        xk = x_K(:,k);
-                        if(numel(gamma)==1)
-                            gammaC=gamma;
-                        else 
-                            gammaC=gamma(:,c);
-                        end
-                        terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
-                        Wk = W_K(:,:,k);
-                        ld = exp(terms);
-                        bt = beta(:,c);
-                        ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*Wk);
-                        ExplogLD = terms;
-                        sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
-                    end
-                  
-                            
+                for k=1:K
+                   Hk=squeeze(HkAll(k,:,:)); 
+                   if(size(Hk,1)==numCells)
+                    Hk = Hk';
+                   end
+                   xk = x_K(:,k);
+                   if(numel(gamma)==1)
+                        gammaC=repmat(gamma,1,numCells);
+                   else 
+                        gammaC=gamma;
+                   end
+%                    if(size(gammaC,1)~=size(mu,1))
+%                         gammaC = gammaC';
+%                     end
+%                     if(size(Hk,1)~=size(mu,1))
+%                         Hk=Hk';
+%                     end
+                   terms=mu+beta'*xk+diag(gammaC'*Hk);
+                   Wk = W_K(:,:,k);
+                   ld = exp(terms);
+                   bt = beta;
+                   ExplambdaDelta =ld+0.5*(ld.*diag((bt'*Wk*bt)));
+                   ExplogLD = terms;
+                   sumPPll=sumPPll+sum(dN(:,k).*ExplogLD - ExplambdaDelta);
+                        
                 end
+                
+            %Vectorize over number of cells
             elseif(strcmp(fitType,'binomial'))
                 sumPPll=0;
-                for c=1:numCells
-                    Hk=HkAll{c};
-                    for k=1:K
-                        xk = x_K(:,k);
-                        if(numel(gamma)==1)
-                            gammaC=gamma;
-                        else 
-                            gammaC=gamma(:,c);
-                        end
-                        terms=mu(c)+beta(:,c)'*xk+gammaC'*Hk(k,:)';
-                        Wk = W_K(:,:,k);
-                        ld = exp(terms)./(1+exp(terms));
-                        bt = beta(:,c);
-                        ExplambdaDelta =ld+0.5*trace(bt*bt'*ld*(1-ld)*(1-2*ld)*Wk);
-                        ExplogLD = log(ld)+0.5*trace(-(bt*bt'*ld*(1-ld))*Wk);
-                        sumPPll=sumPPll+dN(c,k).*ExplogLD - ExplambdaDelta;
+                for k=1:K
+                    Hk=squeeze(HkAll(k,:,:));
+                    if(size(Hk,1)==numCells)
+                       Hk = Hk';
                     end
-                  
-                            
+                    xk = x_K(:,k);
+                    if(numel(gamma)==1)
+                        gammaC=repmat(gamma,1,numCells);
+                    else 
+                        gammaC=gamma;
+                    end
+%                     if(size(gammaC,1)~=size(mu,1))
+%                         gammaC = gammaC';
+%                     end
+%                     if(size(Hk,1)~=size(mu,1))
+%                         Hk=Hk';
+%                     end
+                   terms=mu+beta'*xk+diag(gammaC'*Hk);
+                   Wk = W_K(:,:,k);
+                   ld = exp(terms)./(1+exp(terms));
+                   bt = beta;     
+                   ExplambdaDelta = ld+0.5*(ld.*(1-ld).*(1-2.*ld)).*diag((bt'*Wk*bt));
+                   ExplogLD = log(ld)+0.5*(-ld.*(1-ld)).*diag(bt'*Wk*bt);
+                   sumPPll=sumPPll+sum(dN(:,k).*ExplogLD - ExplambdaDelta); 
+                    
                 end
+
+                
             end
 
-            logll = -Dx*K/2*log(2*pi)-K/2*log(det(Q)) - Dx/2*log(2*pi) -1/2*log(det(Px0)) -Dx/2  ...
-                    +sumPPll - 1/2*trace(pinv(Q)*sumXkTerms);
-                    
+            logll = -Dx*K/2*log(2*pi)-K/2*log(det(Q)) ...
+                    - Dx/2*log(2*pi) -1/2*log(det(Px0))  ...
+                    +sumPPll - 1/2*trace((eye(size(Q))/Q)*sumXkTerms) ...
+                    -Dx/2;
                 string0 = ['logll: ' num2str(logll)];
                 disp(string0);
                 if(DEBUG==1)
                     string1 = ['-K/2*log(det(Q)):' num2str(-K/2*log(det(Q)))];
-                    string2= ['Constants: ' num2str(-Dx*K/2*log(2*pi)- Dx/2*log(2*pi) -Dx/2 -1/2*log(det(Px0)))];
-                    string3 = ['SumPPll: ' num2str(sumPPll)];
-                    string4 = ['-.5*trace(Q\sumXkTerms): ' num2str(-.5*trace(Q\sumXkTerms))];
+                    string12= ['Constants: ' num2str(-Dx*K/2*log(2*pi)-Dx/2*log(2*pi) -Dx/2 -1/2*log(det(Px0)))];
+                    string2 = ['SumPPll: ' num2str(sumPPll)];
+                    string3 = ['-.5*trace(Q\sumXkTerms): ' num2str(-.5*trace(Q\sumXkTerms))];
                     
-
                     disp(string1);
                     disp(['Q=' num2str(diag(Q)')]);
+                    disp(string12);
                     disp(string2);
                     disp(string3);
-                    disp(string4);
-
+                 
                 end
 
                 ExpectationSums.Sxkm1xkm1=Sxkm1xkm1;
                 ExpectationSums.Sxkm1xk=Sxkm1xk;
+                ExpectationSums.Sxkxkm1=Sxkxkm1;
                 ExpectationSums.Sxkxk=Sxkxk;
                 ExpectationSums.sumXkTerms=sumXkTerms;
                 ExpectationSums.sumPPll=sumPPll;
+                ExpectationSums.Sx0 = Ex0Gy;
+                ExpectationSums.Sx0x0 = Px0Gy + Ex0Gy*Ex0Gy';
+                ExpectationSums.A = A;
+                ExpectationSums.Q = Q;
+                ExpectationSums.mu = mu;
+                ExpectationSums.beta = beta;
+                ExpectationSums.gamma = gamma;
 
         end
-        function [Ahat, Qhat, muhat, betahat, gammahat] = PP_MStep(dN,x_K,W_K,ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes,HkAll,MstepMethod)
-            if(nargin<11 || isempty(MstepMethod))
+        function [Ahat, Qhat, muhat_new, betahat_new, gammahat_new, x0hat, Px0hat] = PP_MStep(dN,x_K,W_K,x0, ExpectationSums,fitType, muhat, betahat,gammahat, windowTimes, HkAll,MstepMethod)
+            if(nargin<12 || isempty(MstepMethod))
                 MstepMethod = 'GLM'; %GLM or NewtonRaphson
             end
             Sxkm1xkm1=ExpectationSums.Sxkm1xkm1;
-            Sxkm1xk=ExpectationSums.Sxkm1xk;
+            Sxkxkm1=ExpectationSums.Sxkxkm1;
             Sxkxk=ExpectationSums.Sxkxk;
-            
-            sumXkTerms=ExpectationSums.sumXkTerms;
-            
+            sumXkTerms = ExpectationSums.sumXkTerms;
+            Sx0 = ExpectationSums.Sx0;
+            Sx0x0 = ExpectationSums.Sx0x0;
             K = size(x_K,2);   
             numCells=size(dN,1);
             numStates = size(x_K,1);
-%             Ahat =diag(diag(Sxkm1xk/Sxkm1xkm1));
-%             [V,D] = eig(Ahat); 
-%             D(D>=1)=.99999; % Make sure that the A matrix is stable
-%             Ahat = V*D*V';
-%             Ahat(Ahat>1)=.99999;
-            Ahat = eye(numStates,numStates);
-            Qhat = diag(diag(1/K*sumXkTerms));
-
+            Ahat = Sxkxkm1/Sxkm1xkm1;
+        
+            Px0hat =(Sx0x0 - x0*Sx0' - Sx0*x0' +(x0*x0'));
+             
+%              [V,D] = eig(Px0hat);
+%              D(D<0)=1e-9;
+%              Px0hat = V*D*V';
+            Px0hat = (Px0hat+Px0hat')/2;
+%              Px0hat = diag(diag(Px0hat));
+            x0hat  = Sx0;
+        
+            Qhat=1/K*sumXkTerms;
+%             [V,D] = eig(Qhat);
+%             D(D<=0)=1e-9;
+%             Qhat = V*D*V';
+            Qhat = (Qhat + Qhat')/2;
+            if(det(Qhat)<=0)
+                Qhat = ExpectationSums.Q; % Keep prior value
+            end
+            
+               
              
             betahat_new =betahat;
             gammahat_new = gammahat;
@@ -4797,7 +6263,7 @@ classdef DecodingAlgorithms
                 baseline = Covariate(time,ones(length(time),1),'Baseline','time','s','',...
                     {'constant'});
                 for i=1:size(dN,1)
-                    spikeTimes = time(find(dN(i,:)==1));
+                    spikeTimes = time(dN(i,:)==1);
                     nst{i} = nspikeTrain(spikeTimes);
                 end
                 nspikeColl = nstColl(nst);
@@ -4830,15 +6296,22 @@ classdef DecodingAlgorithms
                     histTemp = reshape(histTemp, [length(windowTimes)-1 numCells]);
                     histTemp(isnan(histTemp))=0;
                     gammahat=histTemp;
+                    if(size(gammahat,2)~=size(muhat,1))
+                        gammahat = gammahat';
+                    end
                 end
             else
                 
             % Estimate via Newton-Raphson
                  fprintf(['****M-step for beta**** \n']);
                  for c=1:numCells
+    %                  c
+
+
                      converged=0;
                      iter = 1;
                      maxIter=100;
+    %                  disp(['M-step for beta, neuron:' num2str(c) ' iter: ' num2str(c) ' of ' num2str(maxIter)]); 
                      fprintf(['neuron:' num2str(c) ' iter: ']);
                      while(~converged && iter<maxIter)
 
@@ -4851,7 +6324,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(betahat_new(:,c),1),1);
                             jacQ =zeros(size(betahat_new(:,c),1),size(betahat_new(:,c),1));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 xk = x_K(:,k);
                                 if(numel(gammahat)==1)
@@ -4891,7 +6365,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(betahat_new(:,c),1),1);
                             jacQ =zeros(size(betahat_new(:,c),1),size(betahat_new(:,c),1));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 xk = x_K(:,k);                    
                                 if(numel(gammahat)==1)
@@ -4952,6 +6427,9 @@ classdef DecodingAlgorithms
                         end
 
 
+    %                    gradQ=0.01*gradQ;
+
+
                         if(any(any(isnan(jacQ))) || any(any(isinf(jacQ))))
                             betahat_newTemp = betahat_new(:,c);
                         else
@@ -4983,7 +6461,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(muhat_new(c),2),1);
                             jacQ =zeros(size(muhat_new(c),2),size(muhat_new(c),2));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 if(numel(gammahat)==1)
                                     gammaC=gammahat;
@@ -5005,7 +6484,8 @@ classdef DecodingAlgorithms
                             gradQ=zeros(size(muhat_new(c),2),1);
                             jacQ =zeros(size(muhat_new(c),2),size(muhat_new(c),2));
                             for k=1:K
-                                Hk=HkAll{c};
+%                                 Hk=HkAll{c};
+                                Hk = squeeze(HkAll(:,:,c));
                                 Wk = W_K(:,:,k);
                                 if(numel(gammahat)==1)
                                     gammaC=gammahat;
@@ -5029,13 +6509,14 @@ classdef DecodingAlgorithms
                             end
 
                         end
+    %                     gradQ=0.01*gradQ;
                         muhat_newTemp = (muhat_new(c)'-(1/jacQ)*gradQ)';
                         if(any(isnan(muhat_newTemp)))
                             muhat_newTemp = muhat_new(c);
 
                         end
                         mabsDiff = max(abs(muhat_newTemp - muhat_new(c)));
-                        if(mabsDiff<10^-3)
+                        if(mabsDiff<10^-2)
                             converged=1;
                         end
                         muhat_new(c)=muhat_newTemp;
@@ -5044,7 +6525,7 @@ classdef DecodingAlgorithms
 
                 end
 
-%              Compute the history parameters
+    %             Compute the history parameters
                 gammahat_new = gammahat;
                 if(~isempty(windowTimes) && any(any(gammahat_new~=0)))
                      for c=1:numCells
@@ -5056,7 +6537,8 @@ classdef DecodingAlgorithms
                                 gradQ=zeros(size(gammahat_new(c),2),1);
                                 jacQ =zeros(size(gammahat_new(c),2),size(gammahat_new(c),2));
                                 for k=1:K
-                                    Hk=HkAll{c};
+%                                     Hk=HkAll{c};
+                                    Hk = squeeze(HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
                                     if(numel(gammahat)==1)
                                         gammaC=gammahat;
@@ -5078,7 +6560,8 @@ classdef DecodingAlgorithms
                                 gradQ=zeros(size(gammahat_new(c),2),1);
                                 jacQ =zeros(size(gammahat_new(c),2),size(gammahat_new(c),2));
                                 for k=1:K
-                                    Hk=HkAll{c};
+%                                     Hk=HkAll{c};
+                                    Hk = squeeze(HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
                                     if(numel(gammahat)==1)
                                         gammaC=gammahat;
@@ -5103,14 +6586,15 @@ classdef DecodingAlgorithms
                             end
 
 
-   
+    %                         gradQ=0.01*gradQ;
+
                             gammahat_newTemp = (gammahat_new(:,c)-(eye(size(Hk,2),size(Hk,2))/jacQ)*gradQ');
                             if(any(isnan(gammahat_newTemp)))
                                 gammahat_newTemp = gammahat_new(:,c);
 
                             end
                             mabsDiff = max(abs(gammahat_newTemp - gammahat_new(:,c)));
-                            if(mabsDiff<10^-3)
+                            if(mabsDiff<10^-2)
                                 converged=1;
                             end
                             gammahat_new(:,c)=gammahat_newTemp;
@@ -5118,10 +6602,12 @@ classdef DecodingAlgorithms
                          end
 
                     end
+    %                  gammahat(:,c) = gammahat_new;
                 end
-                
-            end
-           
+%              betahat =betahat_new;
+%              gammahat = gammahat_new;
+%              muhat = muhat_new;
+            end           
         end
     end
 end

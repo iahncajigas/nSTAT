@@ -62,6 +62,7 @@ classdef nspikeTrain < handle
         %%TODO add listener to each spike train so that consistency is
         %%guaranteed of objects are modified.
         isSigRepBin % Boolean indicating 1 or 0 spikes occur per bin
+        
     end
     
     methods
@@ -100,8 +101,9 @@ classdef nspikeTrain < handle
             nst.sampleRate = 1/binwidth;
             nst.minTime = minTime;
             nst.maxTime = maxTime;
-%            nst.setSigRep(binwidth, minTime, maxTime,varargin{:});
-            nst.sigRep = [];
+            nst.setSigRep(binwidth, minTime, maxTime,varargin{:});
+%             nst.sigRep = [];
+%             nst.isSigRepBin=[];
         end
 %         function shift(nstObj,deltaT)
 %            nstObj.spikeTimes = nstObj.spikeTimes + deltaT;
@@ -137,9 +139,9 @@ classdef nspikeTrain < handle
            nstObj.minTime=minTime;
 %            nstObj.clearSigRep;
         end        
-        function answer = get.isSigRepBin(nstObj)
-            answer = nstObj.isSigRepBinary;
-        end
+%         function answer = get.isSigRepBin(nstObj)
+%             answer = nstObj.isSigRepBinary;
+%         end
         function setMaxTime(nstObj,maxTime)
            % setMaxTime(sObj,nstObj)
            % sets the maximum value of the time vector for the SignalObj
@@ -209,11 +211,19 @@ classdef nspikeTrain < handle
                             spikeTimes = nstObj.spikeTimes;
                             spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
                             windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
+                            lwindowTimes = length(windowTimes);
                             for j=1:length(timeVec) %number of bins
-                                if(j==(length(windowTimes)-1))
-                                    data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<=windowTimes(j+1)));
+                                if(j==(lwindowTimes-1))
+                                    tempSpikes=spikeTimes(spikeTimes>=windowTimes(j));
+                                    data(j)=sum(tempSpikes<=windowTimes(j+1));
+%                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<=windowTimes(j+1)));
+                                elseif(j>floor(lwindowTimes/2))
+                                    tempSpikes=spikeTimes(spikeTimes>=windowTimes(j));
+                                    data(j)=sum(tempSpikes<windowTimes(j+1));
+%                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<windowTimes(j+1)));
                                 else
-                                    data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<windowTimes(j+1)));
+                                    tempSpikes=spikeTimes(spikeTimes<windowTimes(j+1));
+                                    data(j)=sum(tempSpikes>=windowTimes(j));
                                 end
                             end
 %                             tV=repmat(timeVec,[length(spikeTimes) 1]);
@@ -224,6 +234,7 @@ classdef nspikeTrain < handle
                          
                             sigRep = SignalObj(timeVec, data',nstObj.name,varargin{:});
                             nstObj.sigRep = sigRep;
+                            nstObj.isSigRepBin=nstObj.isSigRepBinary;
                         end 
                    else
                        %rounding avoids comparison errors due to
@@ -231,11 +242,20 @@ classdef nspikeTrain < handle
                         spikeTimes = nstObj.spikeTimes;
                         spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
                         windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
+                        lwindowTimes = length(windowTimes);
+%                         ltimeVec = length(timeVec);
                         for j=1:length(timeVec) %number of bins
-                            if(j==(length(windowTimes)-1))
-                                data(j) = sum((and(spikeTimes>=windowTimes(j), spikeTimes<=windowTimes(j+1))));
+                            if(j==(lwindowTimes)-1)
+                                tempSpikes=spikeTimes(spikeTimes>=windowTimes(j));
+                                data(j)=sum(tempSpikes<=windowTimes(j+1));
+%                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<=windowTimes(j+1)));
+                            elseif(j>floor(lwindowTimes/2))
+                                tempSpikes=spikeTimes(spikeTimes>=windowTimes(j));
+                                data(j)=sum(tempSpikes<windowTimes(j+1));
+%                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<windowTimes(j+1)));
                             else
-                                data(j) = sum((and(spikeTimes>=windowTimes(j), spikeTimes<windowTimes(j+1))));
+                                tempSpikes=spikeTimes(spikeTimes<windowTimes(j+1));
+                                data(j)=sum(tempSpikes>=windowTimes(j));
                             end
                         end
 %                         timeVec    = round(timeVec*nstObj.sampleRate)/nstObj.sampleRate;
@@ -254,8 +274,10 @@ classdef nspikeTrain < handle
                         
                         sigRep = SignalObj(timeVec, data',nstObj.name,varargin{:});
                         nstObj.sigRep = sigRep;
+                        nstObj.isSigRepBin=nstObj.isSigRepBinary;
                    end
                   nstObj.sigRep = sigRep;
+                  nstObj.isSigRepBin=nstObj.isSigRepBinary;
             %end
         end
         function maxBinSize=getMaxBinSizeBinary(nstObj)
@@ -535,7 +557,7 @@ classdef nspikeTrain < handle
 %                   answer=1;
 %               end      
 %             else
-              if(max(nstObj.getSigRep.data)>1)
+              if(max(nstObj.sigRep.data)>1)
                   answer=0;
               else
                   answer=1;
