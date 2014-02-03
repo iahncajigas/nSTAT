@@ -590,6 +590,7 @@ classdef CovColl <handle
             dimTot = sumDimensions(selectorCell);
             nCov   = numActCov(selectorCell);
             covInd = covIndFromSelector(selectorCell);
+            
             dataMat=zeros(length(ccObj.getCov(1).getSigRep.time),dimTot);
 %             size(dataMat)
             for i=1:nCov

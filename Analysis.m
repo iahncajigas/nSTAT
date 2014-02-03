@@ -94,163 +94,282 @@ end
             if(batchMode==1)
                display('Running in batch mode: neurons with same name are fit simultaneously'); 
             end
+            
             for i=1:configColl.numConfigs
                 configColl.setConfig(tObj,i);
 %                 fprintf(strcat('Analyzing Configuration #',num2str(i)));
-                
-                if(batchMode==0)
-                    fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
-                    for j=1:numNeurons
-%                         fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #',num2str(neuronNumber(j))));
-                        if(j==1)
-                            fprintf('%d',neuronNumber(j));
-                        else
-                            fprintf(',%d',neuronNumber(j));
-                        end
-                        %clear tempLabels;
-                        %tObj.setCurrentNeuron(neuronNumber);
-                        otherLabels  = tObj.getLabelsFromMask(neuronNumber(j));
-    %                     labels{j}{i}  = horzcat('Baseline',otherLabels); % Labels change depending on presence/absense of History or ensCovHist
-                        labels{j}{i}  = otherLabels; % Labels change depending on presence/absense of History or ensCovHist
-                        numHist{j}{i} = tObj.getNumHist;
-                        histObj{j}{i} = tObj.history;
-                        ensHistObj{j}{i} = tObj.ensCovHist;
-                        [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
-                        lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
-                        dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
-                        distrib{j}{i} =distribTemp;
-                        spikeTraining{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
-                        spikeTraining{j}.setName(num2str(neuronNumber(j)));
-
-                        %% Collect the validation Data
-                        if(diff(tObj.validationWindow)~=0)
-                              tObj.setTrialTimesFor('validation');
-                              XvalData{j}{i}=tObj.getDesignMatrix(neuronNumber(j));
-                              XvalTime{j}{i}=tObj.covarColl.getCov(1).time;
-                              spikeValidation{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
-                              spikeTraining{j}.setName(num2str(neuronNumber(j)));
-                              tObj.setTrialTimesFor('training')
-                        end
-                       
-                    end
-                elseif(batchMode==1)
-                    neuronNames=neuronNumber; % This is an index of names in the batchMode case
-                    fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
-                    for j=1:numNeurons
-                        
-%                         if(isa(neuronNames,'cell'))
-%                             fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
-%                             display(strcat('Analyzing Configuration #',num2str(i),': Neuron #',neuronNames{j}));
-%                         elseif(isa(neuronNames,'char'))
-%                             display(strcat('Analyzing Configuration #',num2str(i),': Neuron #',neuronNames));
-%                         elseif(isa(neuronNames,'double'))
-%                             display(strcat('Analyzing Configuration #',num2str(i),': Neuron #',num2str(neuronNames)));
-%                         end
-                        if(isa(neuronNames,'cell'))
+                pools = matlabpool('size');
+                if(pools==0)
+                    if(batchMode==0)
+                        fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
+                        for j=1:numNeurons
+        %                         fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #',num2str(neuronNumber(j))));
                             if(j==1)
-                                fprintf('%s',neuronNames{j});
+                                fprintf('%d',neuronNumber(j));
                             else
-                                fprintf(',%s',neuronNames{j});
+                                fprintf(',%d',neuronNumber(j));
                             end
-                        elseif(isa(neuronNames,'char'))
-                            if(j==1)
-                                fprintf('%s',neuronNames);
-                            else
-                                fprintf(',%s',neuronNames);
-                            end
-                        elseif(isa(neuronNames,'double'))
-                            if(j==1)
-                                fprintf('%d',neuronNames);
-                            else
-                                fprintf('%,d',neuronNames);
-                            end
-                        end
-
-                        %clear tempLabels;
-                        %tObj.setCurrentNeuron(neuronNumber);
-                        otherLabels  = tObj.getLabelsFromMask(neuronNumber(j));
-    %                     labels{j}{i}  = horzcat('Baseline',otherLabels); % Labels change depending on presence/absense of History or ensCovHist
-                        labels{j}{i}  = otherLabels; % Labels change depending on presence/absense of History or ensCovHist
-                        numHist{j}{i} = tObj.getNumHist;
-                        histObj{j}{i} = tObj.history;
-                        ensHistObj{j}{i} = tObj.ensCovHist;
-                         if(isa(neuronNames,'cell'))
-                             [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
-                         elseif(isa(neuronNames,'char'))
-                             [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
-                         else
+                            %clear tempLabels;
+                            %tObj.setCurrentNeuron(neuronNumber);
+                            otherLabels  = tObj.getLabelsFromMask(neuronNumber(j));
+        %                     labels{j}{i}  = horzcat('Baseline',otherLabels); % Labels change depending on presence/absense of History or ensCovHist
+                            labels{j}{i}  = otherLabels; % Labels change depending on presence/absense of History or ensCovHist
+                            numHist{j}{i} = tObj.getNumHist;
+                            histObj{j}{i} = tObj.history;
+                            ensHistObj{j}{i} = tObj.ensCovHist;
                             [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
-                         end
-                       
-                        lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
-                        dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
-                        distrib{j}{i} =distribTemp;
-                         if(isa(neuronNames,'cell'))
-                            currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames{j}));
-                         elseif(isa(neuronNames,'char'))
-                            currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames));
-                         else
-                            currSpikes=tObj.nspikeColl.getNST(neuronNames(j)); 
-                         end
-                        
-                        
-                        for n=1:length(currSpikes)
-                            if(isa(currSpikes,'cell'))
-                                 currSpikes{n} = currSpikes{n}.nstCopy;
-                                 if(isa(neuronNames,'cell'))
-                                    currSpikes{n}.setName(neuronNames{j});
-                                 elseif(isa(neuronNames,'char'))
-                                    currSpikes{n}.setName(neuronNames);
-                                 else
-                                    currSpikes{n}.setName(neuronNames(j));
-                                 end
-                                        
-                            else
-                                currSpikes = currSpikes.nstCopy;
-                              
-                                if(isa(neuronNames,'cell'))
-                                    currSpikes.setName(neuronNames{j});
-                                elseif(isa(neuronNames,'char'))
-                                    currSpikes.setName(neuronNames);
-                                else
-                                    currSpikes.setName(neuronNames(j));
-                                end
-                                 
-                            end
-                        end
-                            
-                        spikeTraining{j} = currSpikes;
+                            lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            distrib{j}{i} =distribTemp;
+                            spikeTraining{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
+                            spikeTraining{j}.setName(num2str(neuronNumber(j)));
 
-                        %% Collect the validation Data
-                        if(diff(tObj.validationWindow)~=0)
-                            tObj.setTrialTimesFor('validation');
-                            tempIndices=tObj.getNeuronIndFromName(neuronNames{j});
-                            currSpikes=tObj.nspikeColl.getNST(tempIndices);
-                            tempX = [];
-                            tempTime=[];
-                            for n=1:length(tempIndices)
-                                currSpikes{n} = currSpikes{n}.nstCopy;
-                                currSpikes{n}.setName(neuronNames{j});
-                                if(n==1)
-                                    tempX =tObj.getDesignMatrix(tempIndices(n)); 
-                                    tempTime =tObj.covarColl.getCov(1).time;
+                            %% Collect the validation Data
+                            if(diff(tObj.validationWindow)~=0)
+                                  tObj.setTrialTimesFor('validation');
+                                  XvalData{j}{i}=tObj.getDesignMatrix(neuronNumber(j));
+                                  XvalTime{j}{i}=tObj.covarColl.getCov(1).time;
+                                  spikeValidation{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
+                                  spikeTraining{j}.setName(num2str(neuronNumber(j)));
+                                  tObj.setTrialTimesFor('training')
+                            end
+
+                        end
+                    elseif(batchMode==1)
+                        neuronNames=neuronNumber; % This is an index of names in the batchMode case
+                        fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
+                        for j=1:numNeurons
+
+        %                         if(isa(neuronNames,'cell'))
+        %                             fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
+        %                             display(strcat('Analyzing Configuration #',num2str(i),': Neuron #',neuronNames{j}));
+        %                         elseif(isa(neuronNames,'char'))
+        %                             display(strcat('Analyzing Configuration #',num2str(i),': Neuron #',neuronNames));
+        %                         elseif(isa(neuronNames,'double'))
+        %                             display(strcat('Analyzing Configuration #',num2str(i),': Neuron #',num2str(neuronNames)));
+        %                         end
+                            if(isa(neuronNames,'cell'))
+                                if(j==1)
+                                    fprintf('%s',neuronNames{j});
                                 else
-                                    tempX = [tempX; tObj.getDesignMatrix(tempIndices(n))];
-                                    offset = max(tempTime)+1/tObj.sampeRate;
-                                    tempTime = [tempTime;(tObj.covarColl.getCov(1).time+offset)];
+                                    fprintf(',%s',neuronNames{j});
+                                end
+                            elseif(isa(neuronNames,'char'))
+                                if(j==1)
+                                    fprintf('%s',neuronNames);
+                                else
+                                    fprintf(',%s',neuronNames);
+                                end
+                            elseif(isa(neuronNames,'double'))
+                                if(j==1)
+                                    fprintf('%d',neuronNames);
+                                else
+                                    fprintf(',%d',neuronNames);
                                 end
                             end
-                            spikeValidation{j} = currSpikes;
-                            XvalData{j}{i}=tempX;
-                            XvalTime{j}{i}=tempTime;
-                            
-                            tObj.setTrialTimesFor('training')
+
+                            %clear tempLabels;
+                            %tObj.setCurrentNeuron(neuronNumber);
+                            otherLabels  = tObj.getLabelsFromMask(neuronNumber(j));
+        %                     labels{j}{i}  = horzcat('Baseline',otherLabels); % Labels change depending on presence/absense of History or ensCovHist
+                            labels{j}{i}  = otherLabels; % Labels change depending on presence/absense of History or ensCovHist
+                            numHist{j}{i} = tObj.getNumHist;
+                            histObj{j}{i} = tObj.history;
+                            ensHistObj{j}{i} = tObj.ensCovHist;
+                             if(isa(neuronNames,'cell'))
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
+                             elseif(isa(neuronNames,'char'))
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
+                             else
+                                [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                             end
+
+                            lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            distrib{j}{i} =distribTemp;
+                             if(isa(neuronNames,'cell'))
+                                currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames{j}));
+                             elseif(isa(neuronNames,'char'))
+                                currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames));
+                             else
+                                currSpikes=tObj.nspikeColl.getNST(neuronNames(j)); 
+                             end
+
+
+                            for n=1:length(currSpikes)
+                                if(isa(currSpikes,'cell'))
+                                     currSpikes{n} = currSpikes{n}.nstCopy;
+                                     if(isa(neuronNames,'cell'))
+                                        currSpikes{n}.setName(neuronNames{j});
+                                     elseif(isa(neuronNames,'char'))
+                                        currSpikes{n}.setName(neuronNames);
+                                     else
+                                        currSpikes{n}.setName(neuronNames(j));
+                                     end
+
+                                else
+                                    currSpikes = currSpikes.nstCopy;
+
+                                    if(isa(neuronNames,'cell'))
+                                        currSpikes.setName(neuronNames{j});
+                                    elseif(isa(neuronNames,'char'))
+                                        currSpikes.setName(neuronNames);
+                                    else
+                                        currSpikes.setName(neuronNames(j));
+                                    end
+
+                                end
+                            end
+
+                            spikeTraining{j} = currSpikes;
+
+                            %% Collect the validation Data
+                            if(diff(tObj.validationWindow)~=0)
+                                tObj.setTrialTimesFor('validation');
+                                tempIndices=tObj.getNeuronIndFromName(neuronNames{j});
+                                currSpikes=tObj.nspikeColl.getNST(tempIndices);
+                                tempX = [];
+                                tempTime=[];
+                                for n=1:length(tempIndices)
+                                    currSpikes{n} = currSpikes{n}.nstCopy;
+                                    currSpikes{n}.setName(neuronNames{j});
+                                    if(n==1)
+                                        tempX =tObj.getDesignMatrix(tempIndices(n)); 
+                                        tempTime =tObj.covarColl.getCov(1).time;
+                                    else
+                                        tempX = [tempX; tObj.getDesignMatrix(tempIndices(n))];
+                                        offset = max(tempTime)+1/tObj.sampeRate;
+                                        tempTime = [tempTime;(tObj.covarColl.getCov(1).time+offset)];
+                                    end
+                                end
+                                spikeValidation{j} = currSpikes;
+                                XvalData{j}{i}=tempX;
+                                XvalTime{j}{i}=tempTime;
+
+                                tObj.setTrialTimesFor('training')
+                            end
                         end
                     end
-                    
-                    
+                    fprintf('\n');
+                else %use parallel toolbox
+                    if(batchMode==0)
+                        fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #',num2str(neuronNumber)));
+                        parfor j=1:numNeurons
+                            %clear tempLabels;
+                            %tObj.setCurrentNeuron(neuronNumber);
+                            otherLabels  = tObj.getLabelsFromMask(neuronNumber(j));
+        %                     labels{j}{i}  = horzcat('Baseline',otherLabels); % Labels change depending on presence/absense of History or ensCovHist
+                            labels{j}{i}  = otherLabels; % Labels change depending on presence/absense of History or ensCovHist
+                            numHist{j}{i} = tObj.getNumHist;
+                            histObj{j}{i} = tObj.history;
+                            ensHistObj{j}{i} = tObj.ensCovHist;
+                            [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                            lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            distrib{j}{i} =distribTemp;
+                            spikeTraining{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
+                            spikeTraining{j}.setName(num2str(neuronNumber(j)));
+
+                            %% Collect the validation Data
+                            if(diff(tObj.validationWindow)~=0)
+                                  tObj.setTrialTimesFor('validation');
+                                  XvalData{j}{i}=tObj.getDesignMatrix(neuronNumber(j));
+                                  XvalTime{j}{i}=tObj.covarColl.getCov(1).time;
+                                  spikeValidation{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
+                                  spikeTraining{j}.setName(num2str(neuronNumber(j)));
+                                  tObj.setTrialTimesFor('training')
+                            end
+
+                        end
+                    elseif(batchMode==1)
+                        neuronNames=neuronNumber; % This is an index of names in the batchMode case
+                        fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #',num2str(neuronNames)));
+                        parfor j=1:numNeurons
+
+                            %clear tempLabels;
+                            %tObj.setCurrentNeuron(neuronNumber);
+                            otherLabels  = tObj.getLabelsFromMask(neuronNumber(j));
+        %                     labels{j}{i}  = horzcat('Baseline',otherLabels); % Labels change depending on presence/absense of History or ensCovHist
+                            labels{j}{i}  = otherLabels; % Labels change depending on presence/absense of History or ensCovHist
+                            numHist{j}{i} = tObj.getNumHist;
+                            histObj{j}{i} = tObj.history;
+                            ensHistObj{j}{i} = tObj.ensCovHist;
+                             if(isa(neuronNames,'cell'))
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
+                             elseif(isa(neuronNames,'char'))
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
+                             else
+                                [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                             end
+
+                            lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            distrib{j}{i} =distribTemp;
+                             if(isa(neuronNames,'cell'))
+                                currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames{j}));
+                             elseif(isa(neuronNames,'char'))
+                                currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames));
+                             else
+                                currSpikes=tObj.nspikeColl.getNST(neuronNames(j)); 
+                             end
+
+
+                            for n=1:length(currSpikes)
+                                if(isa(currSpikes,'cell'))
+                                     currSpikes{n} = currSpikes{n}.nstCopy;
+                                     if(isa(neuronNames,'cell'))
+                                        currSpikes{n}.setName(neuronNames{j});
+                                     elseif(isa(neuronNames,'char'))
+                                        currSpikes{n}.setName(neuronNames);
+                                     else
+                                        currSpikes{n}.setName(neuronNames(j));
+                                     end
+
+                                else
+                                    currSpikes = currSpikes.nstCopy;
+
+                                    if(isa(neuronNames,'cell'))
+                                        currSpikes.setName(neuronNames{j});
+                                    elseif(isa(neuronNames,'char'))
+                                        currSpikes.setName(neuronNames);
+                                    else
+                                        currSpikes.setName(neuronNames(j));
+                                    end
+
+                                end
+                            end
+
+                            spikeTraining{j} = currSpikes;
+
+                            %% Collect the validation Data
+                            if(diff(tObj.validationWindow)~=0)
+                                tObj.setTrialTimesFor('validation');
+                                tempIndices=tObj.getNeuronIndFromName(neuronNames{j});
+                                currSpikes=tObj.nspikeColl.getNST(tempIndices);
+                                tempX = [];
+                                tempTime=[];
+                                for n=1:length(tempIndices)
+                                    currSpikes{n} = currSpikes{n}.nstCopy;
+                                    currSpikes{n}.setName(neuronNames{j});
+                                    if(n==1)
+                                        tempX =tObj.getDesignMatrix(tempIndices(n)); 
+                                        tempTime =tObj.covarColl.getCov(1).time;
+                                    else
+                                        tempX = [tempX; tObj.getDesignMatrix(tempIndices(n))];
+                                        offset = max(tempTime)+1/tObj.sampeRate;
+                                        tempTime = [tempTime;(tObj.covarColl.getCov(1).time+offset)];
+                                    end
+                                end
+                                spikeValidation{j} = currSpikes;
+                                XvalData{j}{i}=tempX;
+                                XvalTime{j}{i}=tempTime;
+
+                                tObj.setTrialTimesFor('training')
+                            end
+                        end
+                    end
+                    fprintf('\n');
                 end
-                fprintf('\n');
             end
             
             

@@ -195,7 +195,7 @@ classdef nspikeTrain < handle
                     binwidth=1/nstObj.sampleRate; 
                 end
                   if(and(~isempty(maxTime),~isempty(minTime)))
-                    timeVec=linspace(minTime,maxTime,floor(abs(maxTime-minTime)/binwidth)+1);
+                    timeVec=linspace(minTime,maxTime,ceil((1/binwidth)*abs(maxTime-minTime)/binwidth)*binwidth+1); %scaling by binwidth to avoid roundoff error
                     windowTimes=[minTime-binwidth/2 timeVec+binwidth/2];
                   else
                       timeVec = [];
