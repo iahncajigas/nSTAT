@@ -31,7 +31,9 @@
     <tocitem target="DecodingExample.html">Example Data Analysis - Decoding Univariate Simulated Stimuli (No History Effect)</tocitem>
     <tocitem target="DecodingExampleWithHist.html">Example Data Analysis - Decoding Univariate Simulated Stimuli with and without History Effect</tocitem>
     <tocitem target="StimulusDecode2D.html">Example Data Analysis - Decoding Bivariate Simulated Stimuli</tocitem>
+    <tocitem target="NetworkTutorial.html">Example Data Analysis - Two Neuron Network Simulation and Estimation of Ensemble Effect</tocitem>
     <tocitem target="nSTATPaperExamples.html">nSTAT Paper Examples</tocitem>
+
 
 </tocitem>
 

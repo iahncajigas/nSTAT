@@ -7,7 +7,7 @@
 %
 % *Original Release Date*: 9/10/2009
 %
-% *Current Release Date*: 2/29/2012
+% *Current Release Date*: 4/10/2014
 %
 % *Purpose:*
 % The Neural Spike Analysis Toolbox is an effort to consolidate many of the

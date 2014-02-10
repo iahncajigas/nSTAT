@@ -26,6 +26,8 @@
 % *   <matlab:web('DecodingExample.html','-helpbrowser') Example Data Analysis - Decoding Univariate Simulated Stimuli (No History Effect)>
 % *   <matlab:web('DecodingExampleWithHist.html','-helpbrowser') Example Data Analysis - Decoding Univariate Simulated Stimuli with and without History Effect>
 % *   <matlab:web('StimulusDecode2D.html','-helpbrowser') Example Data Analysis - Decoding Bivariate Simulated Stimuli>
+% *   <matlab:web('NetworkTutorial.html','-helpbrowser') Example Data Analysis - Two Neuron Network Simulation and Estimation of Ensemble Effect>
 % *   <matlab:web('nSTATPaperExamples.html','-helpbrowser') nSTAT J. Neuroscience Methods Examples>
+
 
 
