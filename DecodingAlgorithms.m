@@ -4949,7 +4949,8 @@ classdef DecodingAlgorithms
             IAlphaComp = N*eye(size(Rhat))/Rhat;
             K=size(y,2);
             numCells=size(betahat,2);
-            McExp=500;    
+%             McExp=500;    
+            McExp=mPPCOEM_Constraints.mcIter;
             xKDrawExp = zeros(size(xKFinal,1),K,McExp);
             
 
@@ -7602,7 +7603,7 @@ classdef DecodingAlgorithms
             
             K=size(xKFinal,2);
             numCells=size(betahat,2);
-            McExp=50;    
+            McExp=PPEM_Constraints.mcIter; 
             xKDrawExp = zeros(size(xKFinal,1),K,McExp);
             
 
