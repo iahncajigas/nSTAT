@@ -22,4 +22,4 @@ If you use nSTAT in your work, please remember to cite the above paper in any pu
 
 nSTAT is protected by the GPL v2 Open Source License.
 
-The code respository for nSTAT is hosted on GitHub at https://github.com/wqmalik/nSTAT.
+The code repository for nSTAT is hosted on GitHub at https://github.com/iahncajigas/nSTAT .
