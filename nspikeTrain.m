@@ -62,7 +62,6 @@ classdef nspikeTrain < handle
         %%TODO add listener to each spike train so that consistency is
         %%guaranteed of objects are modified.
         isSigRepBin % Boolean indicating 1 or 0 spikes occur per bin
-        
     end
     
     methods
@@ -102,6 +101,7 @@ classdef nspikeTrain < handle
             nst.minTime = minTime;
             nst.maxTime = maxTime;
             nst.setSigRep(binwidth, minTime, maxTime,varargin{:});
+
 %             nst.sigRep = [];
 %             nst.isSigRepBin=[];
         end
@@ -202,12 +202,16 @@ classdef nspikeTrain < handle
                       windowTimes=[];
                   end
                   data=zeros(length(timeVec),1);
+                  
+                  
+    
                   %If we already have the right signal representation they dont
                   %waste time.
                    if(~isempty(nstObj.sigRep))
                         if((nstObj.sigRep.sampleRate==nstObj.sampleRate) && min(nstObj.sigRep.time)==minTime && max(nstObj.sigRep.time)==maxTime)
                              sigRep = nstObj.sigRep.copySignal;
                         else %create the appropriate representation
+
                             spikeTimes = nstObj.spikeTimes;
                             spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
                             windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
@@ -226,6 +230,7 @@ classdef nspikeTrain < handle
                                     data(j)=sum(tempSpikes>=windowTimes(j));
                                 end
                             end
+                        
 %                             tV=repmat(timeVec,[length(spikeTimes) 1]);
 %                             sT=repmat(spikeTimes',[1 length(timeVec)-1]);
 %                             data= sT>=tV(:,1:end-1) & sT<tV(:,2:end);
@@ -237,27 +242,28 @@ classdef nspikeTrain < handle
                             nstObj.isSigRepBin=nstObj.isSigRepBinary;
                         end 
                    else
-                       %rounding avoids comparison errors due to
-                       %differences in non-significant digits
+                        %rounding avoids comparison errors due to
+                        %differences in non-significant digits
                         spikeTimes = nstObj.spikeTimes;
                         spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
                         windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
                         lwindowTimes = length(windowTimes);
-%                         ltimeVec = length(timeVec);
+                        %                         ltimeVec = length(timeVec);
                         for j=1:length(timeVec) %number of bins
                             if(j==(lwindowTimes)-1)
                                 tempSpikes=spikeTimes(spikeTimes>=windowTimes(j));
                                 data(j)=sum(tempSpikes<=windowTimes(j+1));
-%                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<=windowTimes(j+1)));
+                        %                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<=windowTimes(j+1)));
                             elseif(j>floor(lwindowTimes/2))
                                 tempSpikes=spikeTimes(spikeTimes>=windowTimes(j));
                                 data(j)=sum(tempSpikes<windowTimes(j+1));
-%                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<windowTimes(j+1)));
+                        %                                     data(j) = sum((spikeTimes>=windowTimes(j) & spikeTimes<windowTimes(j+1)));
                             else
                                 tempSpikes=spikeTimes(spikeTimes<windowTimes(j+1));
                                 data(j)=sum(tempSpikes>=windowTimes(j));
                             end
                         end
+                    
 %                         timeVec    = round(timeVec*nstObj.sampleRate)/nstObj.sampleRate;
 %                         for j=1:length(timeVec)-1 %number of bins
 %                             if(j==(length(timeVec)-1))

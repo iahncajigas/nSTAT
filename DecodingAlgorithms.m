@@ -544,10 +544,11 @@ classdef DecodingAlgorithms
            W_p(:,:,1) = Amat(:,:,1)*Pi0*Amat(:,:,1)'+Qmat(:,:,1);
         end %Otherwise we computed it above.
         
+        HkPerm = permute(HkAll,[2 3 1]);
         for n=1:N
 
 
-            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,n), W_p(:,:,n), dN,mu,beta,fitType,gamma,HkAll,n);
+            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,n), W_p(:,:,n), dN,mu,beta,fitType,gamma,HkPerm,n);
             % The prediction step is identical to the symbolic implementation since
             % it is independent of the CIF
 
@@ -767,7 +768,11 @@ classdef DecodingAlgorithms
 %                     sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
 %                     sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
 %                 end
-                Histterm = squeeze(HkAll(time_index,:,:));
+%                 Histterm = squeeze(HkAll(time_index,:,:));
+
+                %  Histtermperm = permute(HkAll,[2 3 1]); need to send it a
+                %  permuted version of HkAll
+                Histterm = HkAll(:,:,time_index);
 %                 if(~any(gamma~=0))
 %                     Histterm = Histterm';
 %                 end
@@ -806,7 +811,10 @@ classdef DecodingAlgorithms
 %                     sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
 %                     sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
 %                 end
-                Histterm = squeeze(HkAll(time_index,:,:));
+%                 Histterm = squeeze(HkAll(time_index,:,:));
+  
+                Histterm = HkAll(:,:,time_index);
+  
                 if(~any(gamma~=0))
                     Histterm = Histterm';
                 end
@@ -845,10 +853,11 @@ classdef DecodingAlgorithms
                     Wu = eye(size(W_p))/invWu;
                 end 
                % Make sure that the update covariance is positive definite.
-                [vec,val]=eig(Wu); val(val<=0)=eps;
-                W_u=vec*val*vec';
-                W_u=real(W_u);
-                W_u(isnan(W_u))=0;
+                W_u=nearestSPD(Wu);
+%                 [vec,val]=eig(Wu); val(val<=0)=eps;
+%                 W_u=vec*val*vec';
+%                 W_u=real(W_u);
+%                 W_u(isnan(W_u))=0;
                 W_u=0.5*(W_u+W_u');
             else
                 W_u = WuConv;
@@ -894,11 +903,12 @@ classdef DecodingAlgorithms
                 invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
                 Wu = pinv(invWu);
                 % Make sure that the update covariate is positive definite.
-                [vec,val]=eig(Wu); val(val<=0)=eps;
-                W_u=vec*val*vec';
-                W_u=real(W_u);
-                W_u(isnan(W_u))=0;
-                W_u=0.5*(W_u+W_u');
+                W_u=nearestSPD(Wu);
+%                 [vec,val]=eig(Wu); val(val<=0)=eps;
+%                 W_u=vec*val*vec';
+%                 W_u=real(W_u);
+%                 W_u(isnan(W_u))=0;
+%                 W_u=0.5*(W_u+W_u');
             end
             x_u     = x_p + W_u*(sumValVec);
 
@@ -1091,7 +1101,7 @@ classdef DecodingAlgorithms
 
             if(nargin<11 || isempty(windowTimes))
                  for c=1:C
-                    HkAll{c} = zeros(N,1);
+                    HkAll(:,:,c) = zeros(N,1);
                     gammaNew(c)=0;
                 end
                 gamma=gammaNew;
@@ -1101,7 +1111,7 @@ classdef DecodingAlgorithms
                     nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*binwidth);
                     nst{c}.setMinTime(minTime);
                     nst{c}.setMaxTime(maxTime);
-                    HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+                    HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
                 end
                 if(size(gamma,2)==1 && C>1) % if more than 1 cell but only 1 gamma
                     gammaNew(:,c) = gamma;
@@ -1153,6 +1163,7 @@ classdef DecodingAlgorithms
                 end
             %% 9 Steps
             % Filtering steps.
+            HkPerm=permute(HkAll,[2 3 1]);
             for k = 1:(size(dN,2))
 
                 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1260,6 +1271,7 @@ classdef DecodingAlgorithms
                % Uses a bank of nmodel point process filters
                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %            k
+    
                for s=1:nmodels
 
                    % Prediction Step
@@ -1279,7 +1291,7 @@ classdef DecodingAlgorithms
 
                    % Update Step
                    % Fold in the neural firing in the current time step
-                   [X_u{s}(ind{s},k),W_u{s}(ind{s},ind{s},k),lambdaDeltaMat{s}(:,k)] = DecodingAlgorithms.PPDecode_updateLinear(X_p{s}(ind{s},k),squeeze(W_p{s}(ind{s},ind{s},k)),dN,mu,beta{s}(ind{s},:),fitType,gamma,HkAll,k);
+                   [X_u{s}(ind{s},k),W_u{s}(ind{s},ind{s},k),lambdaDeltaMat{s}(:,k)] = DecodingAlgorithms.PPDecode_updateLinear(X_p{s}(ind{s},k),squeeze(W_p{s}(ind{s},ind{s},k)),dN,mu,beta{s}(ind{s},:),fitType,gamma,HkPerm,k);
 
 
                end
@@ -3803,7 +3815,7 @@ classdef DecodingAlgorithms
 
             % Generate the Monte Carlo samples for the unobserved data
             for n=1:N
-                WuTemp=squeeze(WKFinal(:,:,n));
+                WuTemp=(WKFinal(:,:,n));
                 [chol_m,p]=chol(WuTemp);
                 z=normrnd(0,1,size(xKFinal,1),Mc);
                 xKDraw(:,n,:)=repmat(xKFinal(:,n),[1 Mc])+(chol_m*z);
@@ -4526,9 +4538,10 @@ classdef DecodingAlgorithms
         
         x_p(:,1) = A*x0;
         W_p(:,:,1) = A * Px0 * A' + Q;
+        Histtermperm = permute(HkAll,[2 3 1]);
 %         WuConv = [];
         for n=1:N
-            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.mPPCODecode_update(x_p(:,n), W_p(:,:,n),  C, R, y(:,n), alpha(:,min(size(alpha,3),n)),dN,mu,beta,fitType,gamma,HkAll,n,[]);
+            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.mPPCODecode_update(x_p(:,n), W_p(:,:,n),  C, R, y(:,n), alpha(:,min(size(alpha,3),n)),dN,mu,beta,fitType,gamma,Histtermperm,n,[]); %expects History with time on 3rd index
             if(n<N)
                 [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.mPPCODecode_predict(x_u(:,n), W_u(:,:,n), A(:,:,min(size(A,3),n)), Q(:,:,min(size(Q,3))));
             end
@@ -4624,7 +4637,9 @@ classdef DecodingAlgorithms
                 gamma = zeros(size(mu))';
             end
             if(strcmp(fitType,'binomial'))
-                Histterm = squeeze(HkAll(time_index,:,:));
+%                 Histterm = squeeze(HkAll(time_index,:,:));
+%                 Histtermperm = permute(HkAll,[2 3 1]);
+                Histterm = HkAll(:,:,time_index);
                 if(size(Histterm,1)~=numCells) %make sure Histterm has proper orientation
                     Histterm = Histterm';
                 end
@@ -4646,7 +4661,9 @@ classdef DecodingAlgorithms
                     sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
                     sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
             elseif(strcmp(fitType,'poisson'))
-                Histterm = squeeze(HkAll(time_index,:,:));
+%                 Histterm = squeeze(HkAll(time_index,:,:));
+%                 Histtermperm = permute(HkAll,[2 3 1]);
+                Histterm = HkAll(:,:,time_index);
                 if(size(Histterm,1)~=numCells) %make sure Histterm has proper orientation
                     Histterm = Histterm';
                 end
@@ -4693,10 +4710,11 @@ classdef DecodingAlgorithms
                             Wu=W_p;
                         end
                        % Make sure that the update covariance is positive definite.
-                        [vec,val]=eig(Wu); val(val<=0)=eps;
-                        W_u=vec*val*vec';
-                        W_u=real(W_u);
-                        W_u(isnan(W_u))=0;
+                        W_u=nearestSPD(Wu);
+%                         [vec,val]=eig(Wu); val(val<=0)=eps;
+%                         W_u=vec*val*vec';
+%                         W_u=real(W_u);
+%                         W_u(isnan(W_u))=0;
                         W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
                     else
                         W_u = WuConv;
@@ -4937,130 +4955,157 @@ classdef DecodingAlgorithms
 
             % Generate the Monte Carlo
             for k=1:K
-                WuTemp=squeeze(WKFinal(:,:,k));
+%                 WuTemp=squeeze(WKFinal(:,:,k));
+                WuTemp=(WKFinal(:,:,k));
                 [chol_m,p]=chol(WuTemp);
                 z=normrnd(0,1,size(xKFinal,1),McExp);
                 xKDrawExp(:,k,:)=repmat(xKFinal(:,k),[1 McExp])+(chol_m*z);
             end
             
             IBetaComp =zeros(size(xKFinal,1)*numCells,size(xKFinal,1)*numCells);
-            if(strcmp(fitType,'poisson'))
-                for c=1:numCells
-                    HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1));
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
-                        Wk = WKFinal(:,:,k);
-                        xk = squeeze(xKDrawExp(:,k,:));
-                                          
-                       if(size(Hk,1)==numCells)
-                           Hk = Hk';
-                       end
-                   
-                        if(numel(gammahat)==1)
-                            gammaC=gammahat;
-%                             gammaC=repmat(gammaC,[1 numCells]);
-                        else 
-                            gammaC=gammahat(:,c);
-                        end
+            xkPerm = permute(xKDrawExp,[1 3 2]);
+            pools = matlabpool('size'); %number of parallel workers
+            if(pools==0)
+                if(strcmp(fitType,'poisson'))
+                    for c=1:numCells
+                        HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1));
+                        for k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            Wk = WKFinal(:,:,k);
 
-                        terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
-                        ld=exp(terms);
-                        HessianTerm=HessianTerm-1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk=xkPerm(:,:,k);
+                           if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                           end
+
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+    %                             gammaC=repmat(gammaC,[1 numCells]);
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+
+                            terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld=exp(terms);
+
+                            HessianTerm=HessianTerm-1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
+                        end
+                        startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
+                        IBetaComp(startInd:endInd,startInd:endInd)=-HessianTerm;
                     end
-                    startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
-                    IBetaComp(startInd:endInd,startInd:endInd)=-HessianTerm;
+                else
+                    for c=1:numCells
+                        HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1));
+                        for k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            Wk = WKFinal(:,:,k);
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = (xkPerm(:,:,k));
+                            if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                            end
+
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+    %                             gammaC=repmat(gammaC,[1 numCells]);
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+                            terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld=exp(terms)./(1+exp(terms));
+                            ExplambdaDeltaXkXk=1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
+                            ExplambdaDeltaSqXkXkT=1/McExp*(repmat(ld.^2,[size(xk,1),1]).*xk)*xk';
+                            ExplambdaDeltaCubeXkXkT=1/McExp*(repmat(ld.^3,[size(xk,1),1]).*xk)*xk';
+                            HessianTerm=HessianTerm+ExplambdaDeltaXkXk+ExplambdaDeltaSqXkXkT-2*ExplambdaDeltaCubeXkXkT;
+
+                        end
+                        startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
+                        IBetaComp(startInd:endInd,startInd:endInd)=-HessianTerm;
+                    end
                 end
             else
-                for c=1:numCells
-                    HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1));
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
-                        Wk = WKFinal(:,:,k);
-                        xk = squeeze(xKDrawExp(:,k,:));
-                        if(size(Hk,1)==numCells)
-                           Hk = Hk';
+                if(strcmp(fitType,'poisson'))
+                    for c=1:numCells
+                        HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1),K);
+                        parfor k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            Wk = WKFinal(:,:,k);
+
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk=xkPerm(:,:,k);
+                           if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                           end
+
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+    %                             gammaC=repmat(gammaC,[1 numCells]);
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+
+                            terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld=exp(terms);
+
+                            HessianTerm(:,:,k)=-1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
                         end
-                   
-                        if(numel(gammahat)==1)
-                            gammaC=gammahat;
-%                             gammaC=repmat(gammaC,[1 numCells]);
-                        else 
-                            gammaC=gammahat(:,c);
-                        end
-                        terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
-                        ld=exp(terms)./(1+exp(terms));
-                        ExplambdaDeltaXkXk=1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
-                        ExplambdaDeltaSqXkXkT=1/McExp*(repmat(ld.^2,[size(xk,1),1]).*xk)*xk';
-                        ExplambdaDeltaCubeXkXkT=1/McExp*(repmat(ld.^3,[size(xk,1),1]).*xk)*xk';
-                        HessianTerm=HessianTerm+ExplambdaDeltaXkXk+ExplambdaDeltaSqXkXkT-2*ExplambdaDeltaCubeXkXkT;
-                        
+                        startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
+                        IBetaComp(startInd:endInd,startInd:endInd)=-sum(HessianTerm,3);
                     end
-                    startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
-                    IBetaComp(startInd:endInd,startInd:endInd)=-HessianTerm;
+                else
+                    for c=1:numCells
+                        HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1),K);
+                        parfor k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            Wk = WKFinal(:,:,k);
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = (xkPerm(:,:,k));
+                            if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                            end
+
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+    %                             gammaC=repmat(gammaC,[1 numCells]);
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+                            terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld=exp(terms)./(1+exp(terms));
+                            ExplambdaDeltaXkXk=1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
+                            ExplambdaDeltaSqXkXkT=1/McExp*(repmat(ld.^2,[size(xk,1),1]).*xk)*xk';
+                            ExplambdaDeltaCubeXkXkT=1/McExp*(repmat(ld.^3,[size(xk,1),1]).*xk)*xk';
+                            HessianTerm(:,:,k)=+ExplambdaDeltaXkXk+ExplambdaDeltaSqXkXkT-2*ExplambdaDeltaCubeXkXkT;
+
+                        end
+                        startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
+                        IBetaComp(startInd:endInd,startInd:endInd)=-sum(HessianTerm,3);
+                    end
+                            
                 end
             end
                         
 
             %CIF means
             IMuComp=zeros(numel(muhat),numel(muhat));
-            for c=1:numCells
-                if(strcmp(fitType,'poisson'))
-                    HessianTerm = 0;
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
-                        if(size(Hk,1)==numCells)
-                           Hk = Hk';
-                        end
-                        xk = squeeze(xKDrawExp(:,k,:));
-                        Wk = WKFinal(:,:,k);
-                        if(numel(gammahat)==1)
-                            gammaC=gammahat;
-                        else 
-                            gammaC=gammahat(:,c);
-                        end
-                        terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
-                        ld = exp(terms);
-                        HessianTerm=HessianTerm-1/McExp*sum(ld,2);
-                    end
-                elseif(strcmp(fitType,'binomial'))
-                    HessianTerm = 0;
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
-                        if(size(Hk,1)==numCells)
-                           Hk = Hk';
-                        end
-                        xk = squeeze(xKDrawExp(:,k,:));
-                        Wk = WKFinal(:,:,k);
-                        if(numel(gammahat)==1)
-                            gammaC=gammahat;
-                        else 
-                            gammaC=gammahat(:,c);
-                        end
-                        terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
-                        ld = exp(terms)./(1+exp(terms));
-                        ExplambdaDelta = 1/McExp*sum(ld,2);
-                        ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
-                        ExplambdaDeltaCubed = 1/McExp*sum(ld.^3,2);
-                        HessianTerm = HessianTerm -(dN(c,k)+1)*ExplambdaDelta ...
-                            +(dN(c,k)+3)*ExplambdaDeltaSquare-3*ExplambdaDeltaCubed;
-                    end
-                end
-                IMuComp(c,c) = -HessianTerm;
-            end
-            
-            
-            % Gamma Information Matrix
-            IGammaComp = zeros(numel(gammahat),numel(gammahat));
-            if(~isempty(windowTimes) && any(any(gammahat~=0)))
-                 for c=1:numCells
-                   if(strcmp(fitType,'poisson'))
-                        HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+            xkPerm = permute(xKDrawExp,[1 3 2]);
+            if(pools==0)
+                for c=1:numCells
+                    if(strcmp(fitType,'poisson'))
+                        HessianTerm = 0;
                         for k=1:K
-                            Hk = squeeze(HkAll(:,:,c));
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(:,:,c));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
-                            xk = squeeze(xKDrawExp(:,k,:));
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
                             Wk = WKFinal(:,:,k);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -5069,17 +5114,18 @@ classdef DecodingAlgorithms
                             end
                             terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
                             ld = exp(terms);
-                            ExplambdaDelta = 1/McExp*sum(ld,2);
-                            HessianTerm=HessianTerm-Hk(k,:)'*Hk(k,:)*ExplambdaDelta;
+                            HessianTerm=HessianTerm-1/McExp*sum(ld,2);
                         end
                     elseif(strcmp(fitType,'binomial'))
                         HessianTerm = 0;
                         for k=1:K
-                            Hk = squeeze(HkAll(:,:,c));
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(:,:,c));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
-                            xk = squeeze(xKDrawExp(:,k,:));
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
                             Wk = WKFinal(:,:,k);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -5090,17 +5136,178 @@ classdef DecodingAlgorithms
                             ld = exp(terms)./(1+exp(terms));
                             ExplambdaDelta = 1/McExp*sum(ld,2);
                             ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
-                            ExplambdaDeltaCubed  = 1/McExp*sum(ld.^2,2);
-                            HessianTerm=HessianTerm+(-ExplambdaDelta*(dN(c,k)+1)...
-                                +ExplambdaDeltaSquare*(dN(c,k)+3)...
-                                -2*ExplambdaDeltaCubed)*Hk(k,:)'*Hk(:,k);
+                            ExplambdaDeltaCubed = 1/McExp*sum(ld.^3,2);
+                            HessianTerm = HessianTerm -(dN(c,k)+1)*ExplambdaDelta ...
+                                +(dN(c,k)+3)*ExplambdaDeltaSquare-3*ExplambdaDeltaCubed;
                         end
-                   end
-                   startInd=size(HkAll,2)*(c-1)+1; endInd = size(HkAll,2)*c;
-                   IGammaComp(startInd:endInd,startInd:endInd) = -HessianTerm;
-                 end
-                 
+                    end
+                    IMuComp(c,c) = -HessianTerm;
+                end
+            else
+                for c=1:numCells
+                    if(strcmp(fitType,'poisson'))
+                        HessianTerm = zeros(K,1);
+                        parfor k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                            end
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
+                            Wk = WKFinal(:,:,k);
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+                            terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld = exp(terms);
+                            HessianTerm(k)=-1/McExp*sum(ld,2);
+                        end
+                    elseif(strcmp(fitType,'binomial'))
+                        HessianTerm = zeros(K,1);
+                        parfor k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                            end
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
+                            Wk = WKFinal(:,:,k);
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+                            terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld = exp(terms)./(1+exp(terms));
+                            ExplambdaDelta = 1/McExp*sum(ld,2);
+                            ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
+                            ExplambdaDeltaCubed = 1/McExp*sum(ld.^3,2);
+                            HessianTerm(k) =  -(dN(c,k)+1)*ExplambdaDelta ...
+                                +(dN(c,k)+3)*ExplambdaDeltaSquare-3*ExplambdaDeltaCubed;
+                        end
+                    end
+                    IMuComp(c,c) = -sum(HessianTerm);
+                end
             end
+            
+            
+            % Gamma Information Matrix
+            IGammaComp = zeros(numel(gammahat),numel(gammahat));
+            if(~isempty(windowTimes) && any(any(gammahat~=0)))
+                xkPerm = permute(xKDrawExp,[1 3 2]);
+                if(pools==0)
+                     for c=1:numCells
+                       if(strcmp(fitType,'poisson'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+                            for k=1:K
+    %                             Hk = squeeze(HkAll(:,:,c));
+                                Hk = (HkAll(:,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
+                                ld = exp(terms);
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                HessianTerm=HessianTerm-Hk(k,:)'*Hk(k,:)*ExplambdaDelta;
+                            end
+                       elseif(strcmp(fitType,'binomial'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+                            for k=1:K
+                                Hk = (HkAll(:,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
+                                ld = exp(terms)./(1+exp(terms));
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
+                                ExplambdaDeltaCubed  = 1/McExp*sum(ld.^2,2);
+                                HessianTerm=HessianTerm+(-ExplambdaDelta*(dN(c,k)+1)...
+                                    +ExplambdaDeltaSquare*(dN(c,k)+3)...
+                                    -2*ExplambdaDeltaCubed)*Hk(k,:)'*Hk(:,k);
+                            end
+                       end
+                       startInd=size(HkAll,2)*(c-1)+1; endInd = size(HkAll,2)*c;
+                       IGammaComp(startInd:endInd,startInd:endInd) = -HessianTerm;
+                     end
+
+                else
+            
+                    for c=1:numCells
+                       if(strcmp(fitType,'poisson'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2),K);
+                            parfor k=1:K
+    %                             Hk = squeeze(HkAll(:,:,c));
+                                Hk = (HkAll(k,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                                ld = exp(terms);
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                HessianTerm(:,:,k)=-Hk'*Hk*ExplambdaDelta;
+                            end
+                        elseif(strcmp(fitType,'binomial'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2),K);
+
+                            parfor k=1:K
+                                Hk = (HkAll(k,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                                ld = exp(terms)./(1+exp(terms));
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
+                                ExplambdaDeltaCubed  = 1/McExp*sum(ld.^2,2);
+                                HessianTerm(:,:,k)=+(-ExplambdaDelta*(dN(c,k)+1)...
+                                    +ExplambdaDeltaSquare*(dN(c,k)+3)...
+                                    -2*ExplambdaDeltaCubed)*Hk'*Hk;
+                            end
+                       end
+                       startInd=size(HkAll,2)*(c-1)+1; endInd = size(HkAll,2)*c;
+                       IGammaComp(startInd:endInd,startInd:endInd) = -sum(HessianTerm,3);
+                    end
+
+                end
+            end
+        
               
             
             if(mPPCOEM_Constraints.EstimateA==1)
@@ -5167,7 +5374,7 @@ classdef DecodingAlgorithms
 
             % Generate the Monte Carlo samples for the unobserved data
             for n=1:N
-                WuTemp=squeeze(WKFinal(:,:,n));
+                WuTemp=(WKFinal(:,:,n));
                 [chol_m,p]=chol(WuTemp);
                 z=normrnd(0,1,size(xKFinal,1),Mc);
                 xKDraw(:,n,:)=repmat(xKFinal(:,n),[1 Mc])+(chol_m*z);
@@ -5280,7 +5487,7 @@ classdef DecodingAlgorithms
                     % Cell Scores
                     for nc=1:numCells
                         if(strcmp(fitType,'poisson'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
@@ -5296,7 +5503,7 @@ classdef DecodingAlgorithms
                             ScoreBetaMc = [ScoreBetaMc; sum(repmat((dN(nc,:)-ld),[Dx 1]).*x_K,2)];
                             ScoreGammaMc= [ScoreGammaMc;sum(repmat(dN(nc,:)-ld,[nHist 1]).*Hk',2)];
                         elseif(strcmp(fitType,'binomial'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
@@ -5424,7 +5631,7 @@ classdef DecodingAlgorithms
                     % Cell Scores
                     for nc=1:numCells
                         if(strcmp(fitType,'poisson'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
@@ -5440,7 +5647,7 @@ classdef DecodingAlgorithms
                             ScoreBetaMc = [ScoreBetaMc; sum(repmat((dN(nc,:)-ld),[Dx 1]).*x_K,2)];
                             ScoreGammaMc= [ScoreGammaMc;sum(repmat(dN(nc,:)-ld,[nHist 1]).*Hk',2)];
                         elseif(strcmp(fitType,'binomial'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
@@ -6248,8 +6455,10 @@ classdef DecodingAlgorithms
             %Vectorize for loop over cells
             if(strcmp(fitType,'poisson'))
                 sumPPll=0;
+                HkPerm =permute(HkAll,[2 3 1]);
                 for k=1:K
-                   Hk=squeeze(HkAll(k,:,:)); 
+%                    Hk=squeeze(HkAll(k,:,:)); 
+                   Hk = HkPerm(:,:,k);
                    if(size(Hk,1)==numCells)
                        Hk = Hk';
                    end
@@ -6275,8 +6484,10 @@ classdef DecodingAlgorithms
             %Vectorize over number of cells
             elseif(strcmp(fitType,'binomial'))
                 sumPPll=0;
+                HkPerm = permute(HkAll,[2 3 1]);
                 for k=1:K
-                    Hk=squeeze(HkAll(k,:,:)); 
+%                     Hk=squeeze(HkAll(k,:,:)); 
+                    HkPerm = HkPerm(:,:,k);
                     if(size(Hk,1)==numCells)
                        Hk = Hk';
                     end
@@ -6489,7 +6700,7 @@ classdef DecodingAlgorithms
 
                 % Generate the Monte Carlo samples
                 for k=1:K
-                    WuTemp=squeeze(W_K(:,:,k));
+                    WuTemp=(W_K(:,:,k));
                     [chol_m,p]=chol(WuTemp);
                     z=normrnd(0,1,size(x_K,1),McExp);
                     xKDrawExp(:,k,:)=repmat(x_K(:,k),[1 McExp])+(chol_m*z);
@@ -6497,6 +6708,7 @@ classdef DecodingAlgorithms
                 % Stimulus Coefficients
                 pool = matlabpool('size');
                 if(pool==0)
+                    xkPerm = permute(xKDrawExp,[1 3 2]);
                     for c=1:numCells
                         converged=0;
                         iter = 1;
@@ -6511,11 +6723,12 @@ classdef DecodingAlgorithms
                             if(strcmp(fitType,'poisson'))
                                 HessianTerm = zeros(size(x_K,1),size(x_K,1));
                                 GradTerm = zeros(size(x_K,1),1);
+                                xkPerm = permute(xKDrawExp,[1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6539,11 +6752,12 @@ classdef DecodingAlgorithms
                             elseif(strcmp(fitType,'binomial'))
                                 HessianTerm = zeros(size(x_K,1),size(x_K,1));
                                 GradTerm = zeros(size(x_K,1),1);
+                                xkPerm = permute(xKDrawExp,[1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6590,6 +6804,7 @@ classdef DecodingAlgorithms
                     HessianTerm = zeros(size(betahat,1),size(betahat,1),numCells);
                     GradTerm = zeros(size(betahat,1),numCells);
                     betahat_newTemp=betahat_new;
+                    xkPerm = permute(xKDrawExp,[1 3 2]);
                     parfor c=1:numCells
                         converged=0;
                         iter = 1;
@@ -6601,13 +6816,14 @@ classdef DecodingAlgorithms
                             else
                                 fprintf(',%d',iter);
                             end
+
                             if(strcmp(fitType,'poisson'))
 
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6636,10 +6852,10 @@ classdef DecodingAlgorithms
                             elseif(strcmp(fitType,'binomial'))
 
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6690,6 +6906,7 @@ classdef DecodingAlgorithms
                 clear GradTerm HessianTerm;
                  %Compute the CIF means 
                  if(pool==0)
+                     xkPerm = permute(xKDrawExp,[1 3 2]);
                      for c=1:numCells
                         converged=0;
                         iter = 1;
@@ -6705,10 +6922,10 @@ classdef DecodingAlgorithms
                                 HessianTerm = zeros(size(1,1),size(1,1));
                                 GradTerm = zeros(size(1,1),1);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6732,10 +6949,10 @@ classdef DecodingAlgorithms
                                 HessianTerm = zeros(size(1,1),size(1,1));
                                 GradTerm = zeros(size(1,1),1);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6779,6 +6996,7 @@ classdef DecodingAlgorithms
                  else
                     HessianTerm = zeros(1,numCells);
                     GradTerm = zeros(1,numCells);
+                    xkPerm = permute(xKDrawExp,[1 3 2]);
                     parfor c=1:numCells
                         converged=0;
                         iter = 1;
@@ -6794,8 +7012,8 @@ classdef DecodingAlgorithms
                                 for k=1:K
                                     Hk = squeeze(HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6822,10 +7040,10 @@ classdef DecodingAlgorithms
 
                             elseif(strcmp(fitType,'binomial'))
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -6878,6 +7096,7 @@ classdef DecodingAlgorithms
                  %Compute the history coeffs
                  if(~isempty(windowTimes) && any(any(gammahat_new~=0)))
                      if(pool==0)
+                         xkPerm = permute(xKDrawExp,[1 3 2]);
                          for c=1:numCells
                             converged=0;
                             iter = 1;
@@ -6889,14 +7108,15 @@ classdef DecodingAlgorithms
         %                         else
         %                             fprintf(',%d',iter);
         %                         end
+                            
                                 if(strcmp(fitType,'poisson'))
                                     HessianTerm = zeros(size(gammahat,1),size(gammahat,1));
                                     GradTerm = zeros(size(gammahat,1),1);
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -6922,8 +7142,8 @@ classdef DecodingAlgorithms
                                     for k=1:K
                                         Hk = squeeze(HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -6967,6 +7187,7 @@ classdef DecodingAlgorithms
                      else
                          HessianTerm = zeros(size(gammahat,1),size(gammahat,1),numCells);
                          GradTerm = zeros(size(gammahat,1),numCells);
+                         xkPerm = permute(xKDrawExp,[1 3 2]);
                          parfor c=1:numCells
                             converged=0;
                             iter = 1;
@@ -6978,18 +7199,20 @@ classdef DecodingAlgorithms
                             else 
                                 gammaC=gammahat_new(:,c);
                             end
+                            
                             while(~converged && iter<maxIter)
         %                         if(iter==1)
         %                             fprintf('%d',iter);
         %                         else
         %                             fprintf(',%d',iter);
         %                         end
+
                                 if(strcmp(fitType,'poisson'))
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -7010,10 +7233,10 @@ classdef DecodingAlgorithms
 
                                 elseif(strcmp(fitType,'binomial'))
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -7392,14 +7615,18 @@ classdef DecodingAlgorithms
             end
             
             IBetaComp =zeros(size(xKFinal,1)*numCells,size(xKFinal,1)*numCells);
-            if(strcmp(fitType,'poisson'))
+            xkPerm = permute(xKDrawExp,[1 3 2]);
+            pools = matlabpool('size'); %number of parallel workers 
+           if(strcmp(fitType,'poisson'))
                 for c=1:numCells
-                    HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1));
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
+                    HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1),K);
+                    parfor k=1:K
+%                         Hk = squeeze(HkAll(:,:,c));
+                        Hk = (HkAll(k,:,c));
                         Wk = WKFinal(:,:,k);
-                        xk = squeeze(xKDrawExp(:,k,:));
-                                          
+                       
+%                         xk = squeeze(xKDrawExp(:,k,:));
+                        xk=xkPerm(:,:,k);
                        if(size(Hk,1)==numCells)
                            Hk = Hk';
                        end
@@ -7411,20 +7638,23 @@ classdef DecodingAlgorithms
                             gammaC=gammahat(:,c);
                         end
 
-                        terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
+                        terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
                         ld=exp(terms);
-                        HessianTerm=HessianTerm-1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
+                        
+                        HessianTerm(:,:,k)=-1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
                     end
                     startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
-                    IBetaComp(startInd:endInd,startInd:endInd)=-HessianTerm;
+                    IBetaComp(startInd:endInd,startInd:endInd)=-sum(HessianTerm,3);
                 end
             else
                 for c=1:numCells
-                    HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1));
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
+                    HessianTerm = zeros(size(xKFinal,1),size(xKFinal,1),K);
+                    parfor k=1:K
+%                         Hk = squeeze(HkAll(:,:,c));
+                        Hk = (HkAll(k,:,c));
                         Wk = WKFinal(:,:,k);
-                        xk = squeeze(xKDrawExp(:,k,:));
+%                         xk = squeeze(xKDrawExp(:,k,:));
+                        xk = (xkPerm(:,:,k));
                         if(size(Hk,1)==numCells)
                            Hk = Hk';
                         end
@@ -7435,80 +7665,35 @@ classdef DecodingAlgorithms
                         else 
                             gammaC=gammahat(:,c);
                         end
-                        terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
+                        terms =muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
                         ld=exp(terms)./(1+exp(terms));
                         ExplambdaDeltaXkXk=1/McExp*(repmat(ld,[size(xk,1),1]).*xk)*xk';
                         ExplambdaDeltaSqXkXkT=1/McExp*(repmat(ld.^2,[size(xk,1),1]).*xk)*xk';
                         ExplambdaDeltaCubeXkXkT=1/McExp*(repmat(ld.^3,[size(xk,1),1]).*xk)*xk';
-                        HessianTerm=HessianTerm+ExplambdaDeltaXkXk+ExplambdaDeltaSqXkXkT-2*ExplambdaDeltaCubeXkXkT;
+                        HessianTerm(:,:,k)+ExplambdaDeltaXkXk+ExplambdaDeltaSqXkXkT-2*ExplambdaDeltaCubeXkXkT;
                         
                     end
                     startInd = size(betahat,1)*(c-1)+1; endInd = size(betahat,1)*c;
-                    IBetaComp(startInd:endInd,startInd:endInd)=-HessianTerm;
+                    IBetaComp(startInd:endInd,startInd:endInd)=-sum(HessianTerm,3);
                 end
             end
-                        
 
+            
             %CIF means
             IMuComp=zeros(numel(muhat),numel(muhat));
-            for c=1:numCells
-                if(strcmp(fitType,'poisson'))
-                    HessianTerm = 0;
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
-                        if(size(Hk,1)==numCells)
-                           Hk = Hk';
-                        end
-                        xk = squeeze(xKDrawExp(:,k,:));
-                        Wk = WKFinal(:,:,k);
-                        if(numel(gammahat)==1)
-                            gammaC=gammahat;
-                        else 
-                            gammaC=gammahat(:,c);
-                        end
-                        terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
-                        ld = exp(terms);
-                        HessianTerm=HessianTerm-1/McExp*sum(ld,2);
-                    end
-                elseif(strcmp(fitType,'binomial'))
-                    HessianTerm = 0;
-                    for k=1:K
-                        Hk = squeeze(HkAll(:,:,c));
-                        if(size(Hk,1)==numCells)
-                           Hk = Hk';
-                        end
-                        xk = squeeze(xKDrawExp(:,k,:));
-                        Wk = WKFinal(:,:,k);
-                        if(numel(gammahat)==1)
-                            gammaC=gammahat;
-                        else 
-                            gammaC=gammahat(:,c);
-                        end
-                        terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
-                        ld = exp(terms)./(1+exp(terms));
-                        ExplambdaDelta = 1/McExp*sum(ld,2);
-                        ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
-                        ExplambdaDeltaCubed = 1/McExp*sum(ld.^3,2);
-                        HessianTerm = HessianTerm -(dN(c,k)+1)*ExplambdaDelta ...
-                            +(dN(c,k)+3)*ExplambdaDeltaSquare-3*ExplambdaDeltaCubed;
-                    end
-                end
-                IMuComp(c,c) = -HessianTerm;
-            end
-            
-            
-            % Gamma Information Matrix
-            IGammaComp = zeros(numel(gammahat),numel(gammahat));
-            if(~isempty(windowTimes) && any(any(gammahat~=0)))
-                 for c=1:numCells
-                   if(strcmp(fitType,'poisson'))
-                        HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+            xkPerm = permute(xKDrawExp,[1 3 2]);
+            if(pools==0)
+                for c=1:numCells
+                    if(strcmp(fitType,'poisson'))
+                        HessianTerm = 0;
                         for k=1:K
-                            Hk = squeeze(HkAll(:,:,c));
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(:,:,c));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
-                            xk = squeeze(xKDrawExp(:,k,:));
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
                             Wk = WKFinal(:,:,k);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -7517,17 +7702,18 @@ classdef DecodingAlgorithms
                             end
                             terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
                             ld = exp(terms);
-                            ExplambdaDelta = 1/McExp*sum(ld,2);
-                            HessianTerm=HessianTerm-Hk(k,:)'*Hk(k,:)*ExplambdaDelta;
+                            HessianTerm=HessianTerm-1/McExp*sum(ld,2);
                         end
                     elseif(strcmp(fitType,'binomial'))
-                        HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+                        HessianTerm = 0;
                         for k=1:K
-                            Hk = squeeze(HkAll(:,:,c));
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(:,:,c));
                             if(size(Hk,1)==numCells)
                                Hk = Hk';
                             end
-                            xk = squeeze(xKDrawExp(:,k,:));
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
                             Wk = WKFinal(:,:,k);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -7538,17 +7724,179 @@ classdef DecodingAlgorithms
                             ld = exp(terms)./(1+exp(terms));
                             ExplambdaDelta = 1/McExp*sum(ld,2);
                             ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
-                            ExplambdaDeltaCubed  = 1/McExp*sum(ld.^2,2);
-                            HessianTerm=HessianTerm+(-ExplambdaDelta*(dN(c,k)+1)...
-                                +ExplambdaDeltaSquare*(dN(c,k)+3)...
-                                -2*ExplambdaDeltaCubed)*Hk(k,:)'*Hk(k,:);
+                            ExplambdaDeltaCubed = 1/McExp*sum(ld.^3,2);
+                            HessianTerm = HessianTerm -(dN(c,k)+1)*ExplambdaDelta ...
+                                +(dN(c,k)+3)*ExplambdaDeltaSquare-3*ExplambdaDeltaCubed;
                         end
-                   end
-                   startInd=size(HkAll,2)*(c-1)+1; endInd = size(HkAll,2)*c;
-                   IGammaComp(startInd:endInd,startInd:endInd) = -HessianTerm;
-                 end
-                 
+                    end
+                    IMuComp(c,c) = -HessianTerm;
+                end
+            else
+                for c=1:numCells
+                    if(strcmp(fitType,'poisson'))
+                        HessianTerm = zeros(K,1);
+                        parfor k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                            end
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
+                            Wk = WKFinal(:,:,k);
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+                            terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld = exp(terms);
+                            HessianTerm(k)=-1/McExp*sum(ld,2);
+                        end
+                    elseif(strcmp(fitType,'binomial'))
+                        HessianTerm = zeros(K,1);
+                        parfor k=1:K
+    %                         Hk = squeeze(HkAll(:,:,c));
+                            Hk = (HkAll(k,:,c));
+                            if(size(Hk,1)==numCells)
+                               Hk = Hk';
+                            end
+    %                         xk = squeeze(xKDrawExp(:,k,:));
+                            xk = xkPerm(:,:,k);
+                            Wk = WKFinal(:,:,k);
+                            if(numel(gammahat)==1)
+                                gammaC=gammahat;
+                            else 
+                                gammaC=gammahat(:,c);
+                            end
+                            terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                            ld = exp(terms)./(1+exp(terms));
+                            ExplambdaDelta = 1/McExp*sum(ld,2);
+                            ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
+                            ExplambdaDeltaCubed = 1/McExp*sum(ld.^3,2);
+                            HessianTerm(k) =  -(dN(c,k)+1)*ExplambdaDelta ...
+                                +(dN(c,k)+3)*ExplambdaDeltaSquare-3*ExplambdaDeltaCubed;
+                        end
+                    end
+                    IMuComp(c,c) = -sum(HessianTerm);
+                end
             end
+            
+            
+                       % Gamma Information Matrix
+            IGammaComp = zeros(numel(gammahat),numel(gammahat));
+            if(~isempty(windowTimes) && any(any(gammahat~=0)))
+                xkPerm = permute(xKDrawExp,[1 3 2]);
+                if(pools==0)
+                     for c=1:numCells
+                       if(strcmp(fitType,'poisson'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+                            for k=1:K
+    %                             Hk = squeeze(HkAll(:,:,c));
+                                Hk = (HkAll(:,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
+                                ld = exp(terms);
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                HessianTerm=HessianTerm-Hk(k,:)'*Hk(k,:)*ExplambdaDelta;
+                            end
+                       elseif(strcmp(fitType,'binomial'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2));
+                            for k=1:K
+                                Hk = (HkAll(:,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk(k,:)';
+                                ld = exp(terms)./(1+exp(terms));
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
+                                ExplambdaDeltaCubed  = 1/McExp*sum(ld.^2,2);
+                                HessianTerm=HessianTerm+(-ExplambdaDelta*(dN(c,k)+1)...
+                                    +ExplambdaDeltaSquare*(dN(c,k)+3)...
+                                    -2*ExplambdaDeltaCubed)*Hk(k,:)'*Hk(:,k);
+                            end
+                       end
+                       startInd=size(HkAll,2)*(c-1)+1; endInd = size(HkAll,2)*c;
+                       IGammaComp(startInd:endInd,startInd:endInd) = -HessianTerm;
+                     end
+
+                else
+            
+                    for c=1:numCells
+                       if(strcmp(fitType,'poisson'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2),K);
+                            parfor k=1:K
+    %                             Hk = squeeze(HkAll(:,:,c));
+                                Hk = (HkAll(k,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                                ld = exp(terms);
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                HessianTerm(:,:,k)=-Hk'*Hk*ExplambdaDelta;
+                            end
+                        elseif(strcmp(fitType,'binomial'))
+                            HessianTerm = zeros(size(HkAll,2),size(HkAll,2),K);
+
+                            parfor k=1:K
+                                Hk = (HkAll(k,:,c));
+                                if(size(Hk,1)==numCells)
+                                   Hk = Hk';
+                                end
+    %                             xk = squeeze(xKDrawExp(:,k,:));
+                                xk = xkPerm(:,:,k);
+                                Wk = WKFinal(:,:,k);
+                                if(numel(gammahat)==1)
+                                    gammaC=gammahat;
+                                else 
+                                    gammaC=gammahat(:,c);
+                                end
+                                terms=muhat(c)+betahat(:,c)'*xk+gammaC'*Hk';
+                                ld = exp(terms)./(1+exp(terms));
+                                ExplambdaDelta = 1/McExp*sum(ld,2);
+                                ExplambdaDeltaSquare = 1/McExp*sum(ld.^2,2);
+                                ExplambdaDeltaCubed  = 1/McExp*sum(ld.^2,2);
+                                HessianTerm(:,:,k)=+(-ExplambdaDelta*(dN(c,k)+1)...
+                                    +ExplambdaDeltaSquare*(dN(c,k)+3)...
+                                    -2*ExplambdaDeltaCubed)*Hk'*Hk;
+                            end
+                       end
+                       startInd=size(HkAll,2)*(c-1)+1; endInd = size(HkAll,2)*c;
+                       IGammaComp(startInd:endInd,startInd:endInd) = -sum(HessianTerm,3);
+                    end
+
+                end
+            end
+        
+              
             
             if(PPEM_Constraints.EstimateA==1)
                 n1=size(IAComp,1); 
@@ -7608,7 +7956,7 @@ classdef DecodingAlgorithms
 
             % Generate the Monte Carlo samples for the unobserved data
             for n=1:N
-                WuTemp=squeeze(WKFinal(:,:,n));
+                WuTemp=(WKFinal(:,:,n));
                 [chol_m,p]=chol(WuTemp);
                 z=normrnd(0,1,size(xKFinal,1),Mc);
                 xKDraw(:,n,:)=repmat(xKFinal(:,n),[1 Mc])+(chol_m*z);
@@ -7691,7 +8039,7 @@ classdef DecodingAlgorithms
                     % Cell Scores
                     for nc=1:numCells
                         if(strcmp(fitType,'poisson'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             nHist = size(Hk,2);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -7704,7 +8052,7 @@ classdef DecodingAlgorithms
                             ScoreBetaMc = [ScoreBetaMc; sum(repmat((dN(nc,:)-ld),[Dx 1]).*x_K,2)];
                             ScoreGammaMc= [ScoreGammaMc;sum(repmat(dN(nc,:)-ld,[nHist 1]).*Hk',2)];
                         elseif(strcmp(fitType,'binomial'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             nHist = size(Hk,2);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -7799,7 +8147,7 @@ classdef DecodingAlgorithms
                     % Cell Scores
                     for nc=1:numCells
                         if(strcmp(fitType,'poisson'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             nHist = size(Hk,2);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -7812,7 +8160,7 @@ classdef DecodingAlgorithms
                             ScoreBetaMc = [ScoreBetaMc; sum(repmat((dN(nc,:)-ld),[Dx 1]).*x_K,2)];
                             ScoreGammaMc= [ScoreGammaMc;sum(repmat(dN(nc,:)-ld,[nHist 1]).*Hk',2)];
                         elseif(strcmp(fitType,'binomial'))
-                            Hk = squeeze(HkAll(:,:,nc));
+                            Hk = (HkAll(:,:,nc));
                             nHist = size(Hk,2);
                             if(numel(gammahat)==1)
                                 gammaC=gammahat;
@@ -8706,9 +9054,9 @@ classdef DecodingAlgorithms
             W_u    = zeros( size(A,2),size(A,2), K );
             x_p(:,1)= A(:,:)*x0;
             W_p(:,:,1)=A*Px0*A' + Q;
-
+            HkPerm=permute(HkAll, [2 3 1]);
             for k=1:K
-                [x_u(:,k), W_u(:,:,k)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,k), W_p(:,:,k), dN,mu,beta,fitType,gamma,HkAll,k,[]);
+                [x_u(:,k), W_u(:,:,k)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,k), W_p(:,:,k), dN,mu,beta,fitType,gamma,HkPerm,k,[]);
                 [x_p(:,k+1), W_p(:,:,k+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,k), W_u(:,:,k), A(:,:,min(size(A,3),k)), Q(:,:,min(size(Q,3))));
             end  
             
@@ -8753,8 +9101,11 @@ classdef DecodingAlgorithms
             %Vectorize for loop over cells
             if(strcmp(fitType,'poisson'))
                 sumPPll=0;
+                Histtermperm = permute(HkAll,[2 3 1]);
+                
                 for k=1:K
-                   Hk=squeeze(HkAll(k,:,:)); 
+%                    Hk=squeeze(HkAll(k,:,:)); 
+                   Hk= Histtermperm(:,:,k);
                    if(size(Hk,1)==numCells)
                        Hk = Hk';
                    end
@@ -8777,8 +9128,10 @@ classdef DecodingAlgorithms
             %Vectorize over number of cells
             elseif(strcmp(fitType,'binomial'))
                 sumPPll=0;
+                Histtermperm = permute(HkAll,[2 3 1]);
                 for k=1:K
-                    Hk=squeeze(HkAll(k,:,:)); 
+%                     Hk=squeeze(HkAll(k,:,:)); 
+                    Hk= Histtermperm(:,:,k);
                     if(size(Hk,1)==numCells)
                        Hk = Hk';
                     end
@@ -9207,7 +9560,7 @@ classdef DecodingAlgorithms
 
                 % Generate the Monte Carlo samples
                 for k=1:K
-                    WuTemp=squeeze(W_K(:,:,k));
+                    WuTemp=(W_K(:,:,k));
                     [chol_m,p]=chol(WuTemp);
                     z=normrnd(0,1,size(x_K,1),McExp);
                     xKDrawExp(:,k,:)=repmat(x_K(:,k),[1 McExp])+(chol_m*z);
@@ -9230,11 +9583,12 @@ classdef DecodingAlgorithms
                             if(strcmp(fitType,'poisson'))
                                 HessianTerm = zeros(size(x_K,1),size(x_K,1));
                                 GradTerm = zeros(size(x_K,1),1);
+                                xkPerm = permute(xKDraw,[2 3 1]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9258,11 +9612,12 @@ classdef DecodingAlgorithms
                             elseif(strcmp(fitType,'binomial'))
                                 HessianTerm = zeros(size(x_K,1),size(x_K,1));
                                 GradTerm = zeros(size(x_K,1),1);
+                                xkPerm = permute(xKDraw,[1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9321,12 +9676,12 @@ classdef DecodingAlgorithms
                                 fprintf(',%d',iter);
                             end
                             if(strcmp(fitType,'poisson'))
-
+                                xkPerm = permute(xKDrawExp, [1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9353,12 +9708,12 @@ classdef DecodingAlgorithms
                                 end
 
                             elseif(strcmp(fitType,'binomial'))
-
+                                    xkPerm = permute(xKDrawExp, [1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk=xKDrawExp(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9423,11 +9778,12 @@ classdef DecodingAlgorithms
                             if(strcmp(fitType,'poisson'))
                                 HessianTerm = zeros(size(1,1),size(1,1));
                                 GradTerm = zeros(size(1,1),1);
+                                xkPerm = permute(xKDrawExp, [1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9450,11 +9806,12 @@ classdef DecodingAlgorithms
                             elseif(strcmp(fitType,'binomial'))
                                 HessianTerm = zeros(size(1,1),size(1,1));
                                 GradTerm = zeros(size(1,1),1);
+                                xkPerm = permute(xKDrawExp, [1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9510,11 +9867,12 @@ classdef DecodingAlgorithms
     %                             fprintf(',%d',iter);
     %                         end
                             if(strcmp(fitType,'poisson'))
+                                xkPerm = permute(xKDrawExp, [1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9540,11 +9898,12 @@ classdef DecodingAlgorithms
                                 end
 
                             elseif(strcmp(fitType,'binomial'))
+                                xkPerm = permute(xKDrawExp, [1 3 2]);
                                 for k=1:K
-                                    Hk = squeeze(HkAll(:,:,c));
+                                    Hk = (HkAll(:,:,c));
                                     Wk = W_K(:,:,k);
-                                    xk = squeeze(xKDrawExp(:,k,:));
-
+%                                     xk = squeeze(xKDrawExp(:,k,:));
+                                    xk = xkPerm(:,:,k);
                                    if(size(Hk,1)==numCells)
                                        Hk = Hk';
                                    end
@@ -9611,11 +9970,12 @@ classdef DecodingAlgorithms
                                 if(strcmp(fitType,'poisson'))
                                     HessianTerm = zeros(size(gammahat,1),size(gammahat,1));
                                     GradTerm = zeros(size(gammahat,1),1);
+                                    xkPerm = permute(xKDrawExp, [1 3 2]);
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -9638,11 +9998,12 @@ classdef DecodingAlgorithms
                                 elseif(strcmp(fitType,'binomial'))
                                     HessianTerm = zeros(size(gammahat,1),size(gammahat,1));
                                     GradTerm = zeros(size(gammahat,1),1);
+                                    xkPerm = permute(xKDrawExp, [1 3 2]);
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk=xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -9703,12 +10064,13 @@ classdef DecodingAlgorithms
         %                         else
         %                             fprintf(',%d',iter);
         %                         end
+                                xkPerm = permute(xKDrawExp, [1 3 2]);
                                 if(strcmp(fitType,'poisson'))
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
@@ -9729,10 +10091,10 @@ classdef DecodingAlgorithms
 
                                 elseif(strcmp(fitType,'binomial'))
                                     for k=1:K
-                                        Hk = squeeze(HkAll(:,:,c));
+                                        Hk = (HkAll(:,:,c));
                                         Wk = W_K(:,:,k);
-                                        xk = squeeze(xKDrawExp(:,k,:));
-
+%                                         xk = squeeze(xKDrawExp(:,k,:));
+                                        xk = xkPerm(:,:,k);
                                        if(size(Hk,1)==numCells)
                                            Hk = Hk';
                                        end
