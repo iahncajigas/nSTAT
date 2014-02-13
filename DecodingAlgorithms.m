@@ -591,7 +591,202 @@ classdef DecodingAlgorithms
         end
         end
       
+             %% Kalman Fixed-Interval Smoother
+        function  [x_pLag, W_pLag, x_uLag, W_uLag,x_uTLag,W_uTLag,x_pTLag,W_pTLag] = PP_fixedIntervalSmoother(A, Q, dN, lags, mu,beta,fitType,delta,gamma,windowTimes,x0, Pi0, yT,PiT,estimateTarget)
 
+            
+            nStates = size(A,2);
+
+            [C,N]   = size(dN); % N time samples, C cells
+            ns=size(A,1); % number of states
+
+            if(nargin<15 || isempty(estimateTarget))
+                estimateTarget=0;
+            end
+            if(nargin<11 || isempty(x0))
+               x0=zeros(ns,1);
+
+            end
+            if(nargin<10 || isempty(windowTimes))
+               windowTimes=[]; 
+            end
+            if(nargin<9 || isempty(gamma))
+                gamma=0;
+            end
+            if(nargin<8 || isempty(delta))
+                delta = .001;
+            end
+
+            if(nargin<14 || isempty(PiT))
+                if(estimateTarget==1)
+                    PiT = zeros(size(Q));
+                else
+                    PiT = 0*diag(ones(ns,1))*1e-6;
+                end
+            end
+            if(nargin<12 || isempty(Pi0))
+                Pi0 = zeros(ns,ns);
+            end
+            if(nargin<13 || isempty(yT))
+                yT=[];
+                Amat = A;
+                Qmat = Q;
+                ft   = zeros(size(Amat,2),N);
+                PiT = zeros(size(Q));
+
+            else
+
+                PitT= zeros(ns,ns,N);  % Pi(t,T) in Srinivasan et al. 
+                QT  = zeros(ns,ns,N);  % The noise covaraince given target observation (Q_t)
+                QN =Q(:,:,min(size(Q,3),N));
+                if(estimateTarget==1)
+
+                    PitT(:,:,N)=QN;   % Pi(T,T)=Pi_T + Q_T, setting PiT=0
+                else
+                    PitT(:,:,N)=PiT+QN;
+                end
+                PhitT = zeros(ns,ns,N);% phi(t,T) - transition matrix from time T to t
+    %             PhiTt = zeros(ns,ns,N);% phi(T,t) - transition matrix from time t to T
+                PhitT(:,:,N) = eye(ns,ns); % phi(T,T) = I
+                B = zeros(ns,ns,N);    % See Equation 2.21 in Srinivasan et. al
+
+                for n=N:-1:2
+                    An =A(:,:,min(size(A,3),n));
+                    Qn =Q(:,:,min(size(Q,3),n));
+
+                    invA=pinv(An);
+                    % state transition matrix
+                    PhitT(:,:,n-1)= invA*PhitT(:,:,n);
+    %                 PhiTt(:,:,n)= A^(N-n);
+
+                    % Equation 2.16 in Srinivasan et al. Note there is a typo in the paper. 
+                    % This is the correct expression. The term Q_t-1 does not
+                    % need to be mulitplied by phi(t-1,t)
+
+                    PitT(:,:,n-1) = invA*PitT(:,:,n)*invA'+Qn;
+
+
+
+                    if(n<=N)
+
+                        B(:,:,n) = An-(Qn*pinv(PitT(:,:,n)))*An; %Equation 2.21 in Srinivasan et. al
+                        QT(:,:,n) = Qn-(Qn*pinv(PitT(:,:,n)))*Qn';
+                    end
+                end
+                A1=A(:,:,min(size(A,3),1));
+                Q1=Q(:,:,min(size(Q,3),1));
+                B(:,:,1) = A1-(Q1*pinv(PitT(:,:,1)))*A1;
+                QT(:,:,1) = Q1-(Q1*pinv(PitT(:,:,1)))*Q1';
+
+                % See Equations 2.23 through 2.26 in Srinivasan et. al
+                if(estimateTarget==1)
+                    beta = [beta ;zeros(ns,C)];
+                    for n=1:N
+                        An =A(:,:,min(size(A,3),n));
+                        Qn =Q(:,:,min(size(Q,3),n));
+                        psi = B(:,:,n);
+                        if(n==N)
+                           gammaMat = eye(ns,ns);
+                        else
+                           gammaMat = (Qn*pinv(PitT(:,:,n)))*PhitT(:,:,n);
+                        end
+                        Amat(:,:,n) = [psi,gammaMat;
+                                      zeros(ns,ns), eye(ns,ns)];
+                        Qmat(:,:,n) = [QT(:,:,n),   zeros(ns,ns);
+                                      zeros(ns,ns) zeros(ns,ns)]; 
+                    end
+                else
+
+                    Amat = B;
+                    Qmat = QT;
+                    for n=1:N
+                        An =A(:,:,min(size(A,3),n));
+                        Qn =Q(:,:,min(size(Q,3),n));
+                        ft(:,n)   = (Qn*pinv(PitT(:,:,n)))*PhitT(:,:,n)*yT;
+                    end
+
+                end
+
+            end
+
+
+            minTime=0;
+            maxTime=(size(dN,2)-1)*delta;
+
+            C=size(dN,1);
+            if(~isempty(windowTimes))
+                histObj = History(windowTimes,minTime,maxTime);
+                HkAll = zeros(size(dN,2),length(windowTimes)-1,C);
+                for c=1:C
+                    nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
+                    nst{c}.setMinTime(minTime);
+                    nst{c}.setMaxTime(maxTime);
+
+                    HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
+    %                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+                end
+                if(size(gamma,2)==1 && C>1) % if more than 1 cell but only 1 gamma
+                    gammaNew(:,c) = gamma;
+                else
+                    gammaNew=gamma;
+                end
+                gamma = gammaNew;
+
+            else
+                for c=1:C
+    %                 HkAll{c} = zeros(N,1);
+                    HkAll(:,:,c) = zeros(N,1);
+                    gammaNew(c)=0;
+                end
+                gamma=gammaNew;
+
+            end
+            if(size(gamma,2)~=C)
+                gamma=gamma';
+            end
+        
+                
+            Alag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
+            Qlag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
+            x0lag = zeros(length(x0)*(lags+1),1);
+            Px0lag = zeros((lags+1)*nStates,(lags+1)*nStates);
+            Px0lag((1:nStates),(1:nStates))=Pi0;
+            x0lag(1:nStates,1)=x0;
+            for n=1:N
+                offset = 0;
+                for i=1:(lags+1)
+                    if(i==1)
+                        Alag((1:nStates)+offset,(1:nStates)+offset,n)=A(:,:,min(size(A,3),n));
+                        Qlag((1:nStates)+offset,(1:nStates)+offset,n)=Q(:,:,min(size(Q,3),n));
+                    else
+                        Alag((1:nStates)+offset,(1:nStates)+(offset-nStates),n)=eye(nStates,nStates);
+                        Qlag((1:nStates)+offset,(1:nStates)+offset,n)=zeros(nStates,nStates);
+                    end
+                    offset=offset+nStates;
+                end
+            end
+            
+            betaLag = zeros((lags+1)*nStates, C);
+            betaLag(1:nStates,1:C)=beta;
+            [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT]=DecodingAlgorithms.PPDecodeFilterLinear(Alag, Qlag, dN, mu,betaLag,fitType,delta,gamma,windowTimes,x0lag, Px0lag, yT,PiT,estimateTarget);
+            
+
+            x_pLag = x_p((lags*nStates+1):(lags+1)*nStates,:);
+            W_pLag = W_p((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+            x_uLag = x_u((lags*nStates+1):(lags+1)*nStates,:);
+            W_uLag = W_u((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+            if(estimateTarget==1)
+                x_uTLag = x_uT((lags*nStates+1):(lags+1)*nStates,:);
+                W_uTLag = W_uT((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+                x_pTLag = x_pT((lags*nStates+1):(lags+1)*nStates,:);
+                W_pTLag = W_pT((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+            else
+                x_uTLag = [];
+                W_uTLag = [];
+                x_pTLag = [];
+                W_pTLag = [];
+            end
+        end
         % PPAF Prediction Step 
         function [x_p, W_p] = PPDecode_predict(x_u, W_u, A, Q)
                 % The PPDecode prediction step 
@@ -834,7 +1029,12 @@ classdef DecodingAlgorithms
                 sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
             end
             if(isempty(WuConv))
-                usePInv=0;
+                eigWp = min(eig(W_p));
+                if(eigWp==0 || eigWp<eps)
+                    usePInv=1;
+                else
+                    usePInv=0;
+                end
                 if(usePInv==1)
                     % Use pinv so that we do a SVD and ignore the zero singular values
                     % Sometimes because of the state space model definition and how information
@@ -866,37 +1066,46 @@ classdef DecodingAlgorithms
 
             if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
                 % Recompute Wu based on Srinivasan et al March 2007
-                 sumValVec=zeros(size(W_p,1),1);
-                 sumValMat=zeros(size(W_p,2),size(W_p,2));
-                 if(strcmp(fitType,'binomial'))
-                    for c=1:C    
-                        linTerm = mu(c)+beta(:,c)'*x_p + gamma(:,c)'*HkAll{c}(time_index,:)';
-                        lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
-                        if(isnan(lambdaDeltaMat(c,1)))
-                            if(linTerm>1e2)
-                                lambdaDeltaMat(c,1)=1;
-                            else
-                                lambdaDeltaMat(c,1)=0;
-                            end
-                        end
-                        sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
-                        sumValMat = sumValMat+((1-lambdaDeltaMat(c,1))^2).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
+                sumValVec=zeros(size(W_p,1),1);
+                sumValMat=zeros(size(W_p,2),size(W_p,2));
+                if(strcmp(fitType,'binomial'))
+                %  Histtermperm = permute(HkAll,[2 3 1]); need to send it a
+                %  permuted version of HkAll
+                    Histterm = HkAll(:,:,time_index);
+                    if(size(Histterm,2)~=size(mu,1))
+                        Histterm=Histterm';
                     end
+                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                    lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
+                    if(isnan(lambdaDeltaMat))
+                        if(linTerm>1e2)
+                            lambdaDeltaMat=1;
+                        else
+                            lambdaDeltaMat=0;
+                        end
+                    end
+                    sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                    sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
                 elseif(strcmp(fitType,'poisson'))
-                    for c=1:C    
-                        linTerm = mu(c)+beta(:,c)'*x_p + gamma(:,c)'*HkAll{c}(time_index,:)';
-                        lambdaDeltaMat(c,1) = exp(linTerm);
-                        if(isnan(lambdaDeltaMat(c,1)))
-                            if(linTerm>1e2)
-                                lambdaDeltaMat(c,1)=1;
-                            else
-                                lambdaDeltaMat(c,1)=0;
-                            end
-                        end
+                    Histterm = HkAll(:,:,time_index);
 
-                        sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
-                        sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
+                    if(~any(gamma~=0))
+                        Histterm = Histterm';
                     end
+                    if(size(Histterm,2)~=size(mu,1))
+                        Histterm=Histterm';
+                    end
+                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                    lambdaDeltaMat = exp(linTerm);
+                    if(isnan(lambdaDeltaMat))
+                        if(linTerm>1e2)
+                            lambdaDeltaMat=1;
+                        else
+                            lambdaDeltaMat=0;
+                        end
+                    end
+                    sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                    sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
                 end
                 invWp = pinv(W_p);
                 invWu = invWp + sumValMat;
@@ -904,11 +1113,6 @@ classdef DecodingAlgorithms
                 Wu = pinv(invWu);
                 % Make sure that the update covariate is positive definite.
                 W_u=nearestSPD(Wu);
-%                 [vec,val]=eig(Wu); val(val<=0)=eps;
-%                 W_u=vec*val*vec';
-%                 W_u=real(W_u);
-%                 W_u(isnan(W_u))=0;
-%                 W_u=0.5*(W_u+W_u');
             end
             x_u     = x_p + W_u*(sumValVec);
 
@@ -1885,7 +2089,44 @@ classdef DecodingAlgorithms
                     Pe_p    = 0.5*(Pe_p + Pe_p');
                 end
         end
-            
+        %% Kalman Fixed-Interval Smoother
+        function  [x_pLag, Pe_pLag, x_uLag, Pe_uLag] = kalman_fixedIntervalSmoother(A, C, Pv, Pw, Px0, x0,y,lags)
+            %y should be zero mean gaussian
+            N       = size(y,2);
+            nStates = size(A,2);
+            nObs = size(C,1);
+            Alag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
+            Pvlag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
+            Clag = zeros(nObs,(lags+1)*nStates,N);
+            Pwlag = zeros(nObs,nObs,N);
+            x0lag = zeros(length(x0)*(lags+1),1);
+            Px0lag = zeros((lags+1)*nStates,(lags+1)*nStates);
+            Px0lag((1:nStates),(1:nStates))=Px0;
+            x0lag(1:nStates,1)=x0;
+            for n=1:N
+                offset = 0;
+                for i=1:(lags+1)
+                    if(i==1)
+                        Alag((1:nStates)+offset,(1:nStates)+offset,n)=A(:,:,min(size(A,3),n));
+                        Pvlag((1:nStates)+offset,(1:nStates)+offset,n)=Pv(:,:,min(size(Pv,3),n));
+                        Clag((1:nObs),(1:nStates)+offset,n)=C(:,:,min(size(C,3),n));
+                        Pwlag((1:nObs),(1:nObs),n) = Pw(:,:,min(size(Pw,3),n));
+                    else
+                        Alag((1:nStates)+offset,(1:nStates)+(offset-nStates),n)=eye(nStates,nStates);
+                        Pvlag((1:nStates)+offset,(1:nStates)+offset,n)=zeros(nStates,nStates);
+                        Clag((1:nObs),(1:nStates)+offset,n)=zeros(nObs,nStates);
+                    end
+                    offset=offset+nStates;
+                end
+            end
+           
+            [x_p, Pe_p, x_u, Pe_u,Gn] = DecodingAlgorithms.kalman_filter(Alag, Clag, Pvlag, Pwlag, Px0lag, x0lag,y);
+
+            x_pLag = x_p((lags*nStates+1):(lags+1)*nStates,:);
+            Pe_pLag = Pe_p((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+            x_uLag = x_u((lags*nStates+1):(lags+1)*nStates,:);
+            Pe_uLag = Pe_u((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+        end
         %% Kalman Smoother
         function [x_N, P_N,Ln] = kalman_smootherFromFiltered(A, x_p, Pe_p, x_u, Pe_u)
             N=size(x_u,2);
