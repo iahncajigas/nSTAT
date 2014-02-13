@@ -794,9 +794,9 @@ classdef DecodingAlgorithms
 
                     W_p    = A * W_u * A' + Q;
 
-                    if(rcond(W_p)<1000*eps)
-                        W_p=W_u; % See Srinivasan et al. 2007 pg. 529
-                    end
+%                     if(rcond(W_p)<1000*eps)
+%                         W_p=W_u; % See Srinivasan et al. 2007 pg. 529
+%                     end
                     W_p = 0.5*(W_p+W_p');
     %                 if(or(any(isnan(W_p)),any(isnan(W_u))))
     %                     
@@ -853,14 +853,15 @@ classdef DecodingAlgorithms
                 % is integrated from distinct CIFs the sumValMat is very sparse. This
                 % allows us to prevent inverting singular matrices
                 if(isempty(WuConv))
-                    invWp = pinv(W_p);
-                    invWu = invWp + sumValMat;
-                    invWu = 0.5*(invWu+invWu');
-                    Wu = pinv(invWu);
+%                     invWp = pinv(W_p);
+%                     invWu = invWp + sumValMat;
+%                     invWu = 0.5*(invWu+invWu');
+%                     Wu = pinv(invWu);
+                    I=eye(size(W_p));
+                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
 
                     % Make sure that the update covariate is positive definite.
-                    [vec,val]=eig(Wu); val(val<=0)=eps;
-                    W_u=vec*val*vec';
+                    W_u=nearestSPD(Wu);
                     W_u=0.5*(W_u+W_u');
                 else
                     W_u=0.5*(WuConv+WuConv');
@@ -887,14 +888,19 @@ classdef DecodingAlgorithms
 
 
                     end
-                    invWp = pinv(W_p);
-                    invWu = invWp + sumValMat;
-                    invWu = 0.5*(invWu+invWu');
-                    Wu = pinv(invWu);
+%                     invWp = pinv(W_p);
+%                     invWu = invWp + sumValMat;
+%                     invWu = 0.5*(invWu+invWu');
+%                     Wu = pinv(invWu);
 
-                    % Make sure that the update covariate is positive definite.
-                    [vec,val]=eig(Wu); val(val<=0)=eps;
-                    W_u=vec*val*vec';
+%                     % Make sure that the update covariate is positive definite.
+%                     [vec,val]=eig(Wu); val(val<=0)=eps;
+%                     W_u=vec*val*vec';
+%                     W_u=0.5*(W_u+W_u');                    
+                    I=eye(size(W_p));
+                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
+                   % Make sure that the update covariance is positive definite.
+                    W_u=nearestSPD(Wu);
                     W_u=0.5*(W_u+W_u');
                 end
                 % Need to add symbolic code in case of ill-conditioned W_u
@@ -1025,32 +1031,35 @@ classdef DecodingAlgorithms
                         lambdaDeltaMat=0;
                     end
                 end
-                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-                sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                sumValMat = (repmat(lambdaDeltaMat(:,1)',size(beta,1),1).*beta)*beta';
             end
             if(isempty(WuConv))
-                eigWp = min(eig(W_p));
-                if(eigWp==0 || eigWp<eps)
-                    usePInv=1;
-                else
+%                 eigWp = min(eig(W_p));
+%                 if(eigWp==0 || eigWp<eps)
+%                     usePInv=1;
+%                 else
                     usePInv=0;
-                end
+%                 end
                 if(usePInv==1)
                     % Use pinv so that we do a SVD and ignore the zero singular values
                     % Sometimes because of the state space model definition and how information
                     % is integrated from distinct CIFs the sumValMat is very sparse. This
                     % allows us to prevent inverting singular matrices
-                    invWp = pinv(W_p);
-                    invWu = invWp + sumValMat;
-                    invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-                    invWu = 0.5*(invWu+invWu');
-                    Wu = pinv(invWu);
-
+%                     invWp = pinv(W_p);
+%                     invWu = invWp + sumValMat;
+%                     invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
+%                     invWu = 0.5*(invWu+invWu');
+%                     Wu = pinv(invWu);
+                    I=eye(size(W_p));
+                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
                 else
-                    invWp = eye(size(W_p))/W_p;
-                    invWu = invWp + sumValMat;
-                    invWu = 0.5*(invWu+invWu');
-                    Wu = eye(size(W_p))/invWu;
+%                     invWp = eye(size(W_p))/W_p;
+%                     invWu = invWp + sumValMat;
+%                     invWu = 0.5*(invWu+invWu');
+%                     Wu = eye(size(W_p))/invWu;
+                    I=eye(size(W_p));
+                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
                 end 
                % Make sure that the update covariance is positive definite.
                 W_u=nearestSPD(Wu);
@@ -1064,56 +1073,59 @@ classdef DecodingAlgorithms
                 W_u=0.5*(W_u+W_u');
             end
 
-            if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
-                % Recompute Wu based on Srinivasan et al March 2007
-                sumValVec=zeros(size(W_p,1),1);
-                sumValMat=zeros(size(W_p,2),size(W_p,2));
-                if(strcmp(fitType,'binomial'))
-                %  Histtermperm = permute(HkAll,[2 3 1]); need to send it a
-                %  permuted version of HkAll
-                    Histterm = HkAll(:,:,time_index);
-                    if(size(Histterm,2)~=size(mu,1))
-                        Histterm=Histterm';
-                    end
-                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
-                    lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
-                    if(isnan(lambdaDeltaMat))
-                        if(linTerm>1e2)
-                            lambdaDeltaMat=1;
-                        else
-                            lambdaDeltaMat=0;
-                        end
-                    end
-                    sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-                    sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
-                elseif(strcmp(fitType,'poisson'))
-                    Histterm = HkAll(:,:,time_index);
-
-                    if(~any(gamma~=0))
-                        Histterm = Histterm';
-                    end
-                    if(size(Histterm,2)~=size(mu,1))
-                        Histterm=Histterm';
-                    end
-                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
-                    lambdaDeltaMat = exp(linTerm);
-                    if(isnan(lambdaDeltaMat))
-                        if(linTerm>1e2)
-                            lambdaDeltaMat=1;
-                        else
-                            lambdaDeltaMat=0;
-                        end
-                    end
-                    sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-                    sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
-                end
-                invWp = pinv(W_p);
-                invWu = invWp + sumValMat;
-                invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-                Wu = pinv(invWu);
-                % Make sure that the update covariate is positive definite.
-                W_u=nearestSPD(Wu);
-            end
+%             if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
+%                 % Recompute Wu based on Srinivasan et al March 2007
+%                 sumValVec=zeros(size(W_p,1),1);
+%                 sumValMat=zeros(size(W_p,2),size(W_p,2));
+%                 if(strcmp(fitType,'binomial'))
+%                 %  Histtermperm = permute(HkAll,[2 3 1]); need to send it a
+%                 %  permuted version of HkAll
+%                     Histterm = HkAll(:,:,time_index);
+%                     if(size(Histterm,2)~=size(mu,1))
+%                         Histterm=Histterm';
+%                     end
+%                     linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+%                     lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
+%                     if(isnan(lambdaDeltaMat))
+%                         if(linTerm>1e2)
+%                             lambdaDeltaMat=1;
+%                         else
+%                             lambdaDeltaMat=0;
+%                         end
+%                     end
+%                     sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+%                     sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+%                 elseif(strcmp(fitType,'poisson'))
+%                     Histterm = HkAll(:,:,time_index);
+%   
+%                     if(~any(gamma~=0))
+%                         Histterm = Histterm';
+%                     end
+%                     if(size(Histterm,2)~=size(mu,1))
+%                         Histterm=Histterm';
+%                     end
+%                     linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+%                     lambdaDeltaMat = exp(linTerm);
+%                     if(isnan(lambdaDeltaMat))
+%                         if(linTerm>1e2)
+%                             lambdaDeltaMat=1;
+%                         else
+%                             lambdaDeltaMat=0;
+%                         end
+%                     end
+%                     sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+%                     sumValMat = (repmat(lambdaDeltaMat(:,1)',size(beta,1),1).*beta)*beta';
+%                 end
+% %                 invWp = pinv(W_p);
+% %                 invWu = invWp + sumValMat;
+% %                 invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
+% %                 Wu = pinv(invWu);
+%                 I=eye(size(W_p));
+%                 Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
+%                 % Make sure that the update covariate is positive definite.
+%                 W_u=nearestSPD(Wu);
+%                 W_u=0.5*(W_u+W_u');
+%             end
             x_u     = x_p + W_u*(sumValVec);
 
 
@@ -4643,6 +4655,108 @@ classdef DecodingAlgorithms
         end
         
         %% Mixed Point Process and Continuous Observation (mPPCO)
+        function [x_pLag, W_pLag, x_uLag, W_uLag] = mPPCO_fixedIntervalSmoother(A, Q, C, R, y, alpha, dN,lags,mu,beta,fitType,delta,gamma,windowTimes,x0,Px0,HkAll)    
+            nStates = size(A,2);
+
+            [numCells,N]   = size(dN); % N time samples
+            nObs = size(C,1);
+            ns=size(A,1); % number of states
+
+            if(nargin<17 || isempty(HkAll))
+                HkAll=[];
+            end
+            if(nargin<16 || isempty(Px0))
+                Px0 = zeros(ns,ns);
+            end
+            
+            if(nargin<15 || isempty(x0))
+               x0=zeros(ns,1);
+
+            end
+            if(nargin<14 || isempty(windowTimes))
+               windowTimes=[]; 
+            end
+            if(nargin<13 || isempty(gamma))
+                gamma=0;
+            end
+            if(nargin<12 || isempty(delta))
+                delta = .001;
+            end
+
+            
+            minTime=0;
+            maxTime=(size(dN,2)-1)*delta;
+
+            if(~isempty(windowTimes))
+                histObj = History(windowTimes,minTime,maxTime);
+                HkAll = zeros(size(dN,2),length(windowTimes)-1,numCells);
+                for c=1:numCells
+                    nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
+                    nst{c}.setMinTime(minTime);
+                    nst{c}.setMaxTime(maxTime);
+
+                    HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
+    %                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+                end
+                if(size(gamma,2)==1 && numCells>1) % if more than 1 cell but only 1 gamma
+                    gammaNew(:,c) = gamma;
+                else
+                    gammaNew=gamma;
+                end
+                gamma = gammaNew;
+
+            else
+                for c=1:numCells
+    %                 HkAll{c} = zeros(N,1);
+                    HkAll(:,:,c) = zeros(N,1);
+                    gammaNew(c)=0;
+                end
+                gamma=gammaNew;
+
+            end
+            if(size(gamma,2)~=numCells)
+                gamma=gamma';
+            end
+        
+                
+            Alag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
+            Qlag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
+            Clag = zeros(nObs,(lags+1)*nStates,N);
+            Rlag = zeros(nObs,nObs,N);
+            x0lag = zeros(length(x0)*(lags+1),1);
+            Px0lag = zeros((lags+1)*nStates,(lags+1)*nStates);
+            Px0lag((1:nStates),(1:nStates))=Px0;
+            x0lag(1:nStates,1)=x0;
+            for n=1:N
+                offset = 0;
+                for i=1:(lags+1)
+                    if(i==1)
+                        Alag((1:nStates)+offset,(1:nStates)+offset,n)=A(:,:,min(size(A,3),n));
+                        Qlag((1:nStates)+offset,(1:nStates)+offset,n)=Q(:,:,min(size(Q,3),n));
+                        Clag((1:nObs),(1:nStates)+offset,n)=C(:,:,min(size(C,3),n));
+                        Rlag((1:nObs),(1:nObs),n) = R(:,:,min(size(R,3),n));
+
+                    else
+                        Alag((1:nStates)+offset,(1:nStates)+(offset-nStates),n)=eye(nStates,nStates);
+                        Qlag((1:nStates)+offset,(1:nStates)+offset,n)=zeros(nStates,nStates);
+                        Clag((1:nObs),(1:nStates)+offset,n)=zeros(nObs,nStates);
+
+                    end
+                    offset=offset+nStates;
+                end
+            end
+            
+            betaLag = zeros((lags+1)*nStates, numCells);
+            betaLag(1:nStates,1:numCells)=beta;
+            [x_p, W_p, x_u, W_u] = DecodingAlgorithms.mPPCODecodeLinear(Alag, Qlag, Clag, Rlag, y, alpha, dN,mu,betaLag,fitType,delta,gamma,windowTimes,x0lag,Px0lag,HkAll);
+            
+
+            x_pLag = x_p((lags*nStates+1):(lags+1)*nStates,:);
+            W_pLag = W_p((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+            x_uLag = x_u((lags*nStates+1):(lags+1)*nStates,:);
+            W_uLag = W_u((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+           
+        end
         function [x_p, W_p, x_u, W_u] = mPPCODecodeLinear(A, Q, C, R, y, alpha, dN,mu,beta,fitType,delta,gamma,windowTimes,x0,Px0,HkAll)
         % [x_p, W_p, x_u, W_u] = mPPCODecodeLinear(A, Q, C, R, y, dN, mu, beta,fitType, delta, gamma,windowTimes, x0)
         % Point process adaptive filter with the assumption of linear
@@ -4776,15 +4890,16 @@ classdef DecodingAlgorithms
         x_u     = zeros( size(A,2), N );
         W_p    = zeros( size(A,2),size(A,2), N+1 );
         W_u    = zeros( size(A,2),size(A,2), N );
-        
-        x_p(:,1) = A*x0;
-        W_p(:,:,1) = A * Px0 * A' + Q;
+        A1=A(:,:,min(size(A,3),1));
+        x_p(:,1) = A1*x0;
+        W_p(:,:,1) = A1 * Px0 * A1' +Q(:,:,min(size(Q,3),1));
         Histtermperm = permute(HkAll,[2 3 1]);
 %         WuConv = [];
         for n=1:N
-            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.mPPCODecode_update(x_p(:,n), W_p(:,:,n),  C, R, y(:,n), alpha(:,min(size(alpha,3),n)),dN,mu,beta,fitType,gamma,Histtermperm,n,[]); %expects History with time on 3rd index
+%             [x_u, W_u,lambdaDeltaMat] = mPPCODecode_update(x_p, W_p, C, R, y, alpha, dN,mu,beta,fitType,gamma,HkAll,time_index,WuConv)
+            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.mPPCODecode_update(x_p(:,n), W_p(:,:,n),  C(:,:,min(size(C,3),n)), R(:,:,min(size(R,3),n)), y(:,n), alpha(:,min(size(alpha,3),n)),dN,mu,beta,fitType,gamma,Histtermperm,n,[]); %expects History with time on 3rd index
             if(n<N)
-                [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.mPPCODecode_predict(x_u(:,n), W_u(:,:,n), A(:,:,min(size(A,3),n)), Q(:,:,min(size(Q,3))));
+                [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.mPPCODecode_predict(x_u(:,n), W_u(:,:,n), A(:,:,min(size(A,3),n)), Q(:,:,min(size(Q,3),n)));
             end
 %             if(n>1 && isempty(WuConv))
 %                 diffWu = abs(W_u(:,:,n)-W_u(:,:,n-1));
@@ -4801,9 +4916,9 @@ classdef DecodingAlgorithms
         function [x_p, W_p] = mPPCODecode_predict(x_u, W_u, A, Q)
             x_p     = A * x_u;
             W_p    = A * W_u * A' + Q;
-            if(rcond(W_p)<1000*eps)
-                W_p=W_u; % See Srinivasan et al. 2007 pg. 529
-            end
+%             if(rcond(W_p)<1000*eps)
+%                 W_p=W_u; % See Srinivasan et al. 2007 pg. 529
+%             end
             W_p = .5*(W_p + W_p'); %To help with symmetry of matrix;
 
         end 
@@ -4924,29 +5039,32 @@ classdef DecodingAlgorithms
                         lambdaDeltaMat=0;
                     end
                 end
-                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-                sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+                sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
+                sumValMat = (repmat(lambdaDeltaMat(:,1)',size(beta,1),1).*beta)*beta';
             end
                     if(isempty(WuConv))
-                        usePInv=0;
-                        if(usePInv==1)
-                            % Use pinv so that we do a SVD and ignore the zero singular values
-                            % Sometimes because of the state space model definition and how information
-                            % is integrated from distinct CIFs the sumValMat is very sparse. This
-                            % allows us to prevent inverting singular matrices
-                            invWp = pinv(W_p);
-                            invR  = eye(size(R))/R;
-                            invWu = invWp + sumValMat +C'*invR*C;
-                            invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-                            Wu = pinv(invWu);
-
-                        else
-                            invWp = eye(size(W_p))/W_p;
-                            invR  = eye(size(R))/R;
-                            invWu = invWp + sumValMat +C'*invR*C;
-                            Wu = eye(size(W_p))/invWu;
-                        end 
-                        Wu = .5*(Wu + Wu'); %To help with symmetry of matrix;
+%                         usePInv=0;
+%                         if(usePInv==1)
+%                             % Use pinv so that we do a SVD and ignore the zero singular values
+%                             % Sometimes because of the state space model definition and how information
+%                             % is integrated from distinct CIFs the sumValMat is very sparse. This
+%                             % allows us to prevent inverting singular matrices
+%                             invWp = pinv(W_p);
+%                             invR  = eye(size(R))/R;
+%                             invWu = invWp + sumValMat +C'*invR*C;
+%                             invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
+%                             Wu = pinv(invWu);
+% 
+%                         else
+%                             invWp = eye(size(W_p))/W_p;
+%                             invR  = eye(size(R))/R;
+%                             invWu = invWp + sumValMat +C'*invR*C;
+%                             Wu = eye(size(W_p))/invWu;
+                        sumValMat = sumValMat+C'*(R\C);
+                        I=eye(size(W_p));
+                        Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
+%                         end 
+%                         Wu = .5*(Wu + Wu'); %To help with symmetry of matrix;
                         if(any(any(isnan(Wu)))||any(any(isinf(Wu))))
                             Wu=W_p;
                         end
@@ -4959,9 +5077,9 @@ classdef DecodingAlgorithms
                         W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
                     else
                         W_u = WuConv;
-                        invR  = eye(size(R))/R;
+%                         invR  = eye(size(R))/R;
                     end
-                    x_u     = x_p + W_u*(sumValVec)+W_u*C'*invR*(y-C*x_p -alpha);
+                    x_u     = x_p + W_u*(sumValVec)+((W_u*C')/R)*(y-C*x_p -alpha);
 
 
         end
