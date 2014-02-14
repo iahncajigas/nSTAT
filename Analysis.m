@@ -801,6 +801,7 @@ end
                
             else
                 nCopy =nspikeObj.nstCopy;
+%                   nCopy =nspikeObj;
                 
             end
             
@@ -915,6 +916,7 @@ end
                 nCopy = nstCollObj.toSpikeTrain;
             else
                 nCopy =nspikeObj.nstCopy;
+%                 nCopy =nspikeObj;
             end
             
             nCopy.resample(lambda.sampleRate);

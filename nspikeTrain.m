@@ -607,15 +607,17 @@ classdef nspikeTrain < handle
            spikeTimes = nstObj.spikeTimes;
            minTime    = nstObj.minTime;
            maxTime    = nstObj.maxTime;
-           if(~isempty(nstObj.sigRep))
-            sig        = nstObj.sigRep.copySignal;
-           else
-            sig        = nstObj.getSigRep;  
-           end
+%            if(~isempty(nstObj.sigRep))
+%             sig        = nstObj.sigRep.copySignal;
+%            else
+%             sig        = nstObj.getSigRep;  
+%            end
+           nCopy.sigRep = nstObj.getSigRep; 
+           sig = nstObj.getSigRep;
            xlabelval  = sig.xlabelval;
            xunits     = sig.xunits;
            nCopy=nspikeTrain(spikeTimes,name,1/sampleRate,minTime,maxTime, xlabelval,xunits);
-           nCopy.sigRep = sig; 
+%            nCopy.sigRep = nstObj.getSigRep; 
         end
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

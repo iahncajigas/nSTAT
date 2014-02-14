@@ -1062,7 +1062,8 @@ classdef DecodingAlgorithms
                     Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
                 end 
                % Make sure that the update covariance is positive definite.
-                W_u=nearestSPD(Wu);
+%                 W_u=nearestSPD(Wu);
+                  W_u = Wu;
 %                 [vec,val]=eig(Wu); val(val<=0)=eps;
 %                 W_u=vec*val*vec';
 %                 W_u=real(W_u);
@@ -1124,6 +1125,7 @@ classdef DecodingAlgorithms
 %                 Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
 %                 % Make sure that the update covariate is positive definite.
 %                 W_u=nearestSPD(Wu);
+                  W_u = Wu;
 %                 W_u=0.5*(W_u+W_u');
 %             end
             x_u     = x_p + W_u*(sumValVec);
@@ -3394,13 +3396,13 @@ classdef DecodingAlgorithms
                 RhatIsotropic=0;
             end
             if(nargin<5 || isempty(RhatDiag))
-                RhatDiag=0;
+                RhatDiag=1;
             end
             if(nargin<4 || isempty(QhatIsotropic))
                 QhatIsotropic=0;
             end
             if(nargin<3 || isempty(QhatDiag))
-                QhatDiag=0;
+                QhatDiag=1;
             end
             if(nargin<2)
                 AhatDiag=0;
@@ -3855,7 +3857,7 @@ classdef DecodingAlgorithms
                     end
                 end
             else
-                IRComp=zeros(numel(diag(Rhat)),numel(diag(Rhat)));
+                IRComp=zeros(numel((Rhat)),numel((Rhat)));
                 for l=1:n1
                     for m=1:n2
                         termMat= N/2*(Rhat)\em(:,m)*el(:,l)'/(Rhat);
@@ -4646,6 +4648,13 @@ classdef DecodingAlgorithms
                     I=eye(N,N);
                     Px0hat =(x0hat*x0hat' - x0*x0hat' - x0hat*x0' +(x0*x0')).*I;
                     Px0hat = (Px0hat+Px0hat')/2;
+                    [V,Lambda]=eig(Px0hat);
+                    Lambda = diag(Lambda);
+                    if(min(Lambda)<eps)
+                        Lambda(Lambda==min(Lambda))=eps;
+                        Px0hat = V*diag(Lambda)*V';
+                    end
+                    
                 end
                 
             else
@@ -5069,11 +5078,12 @@ classdef DecodingAlgorithms
                             Wu=W_p;
                         end
                        % Make sure that the update covariance is positive definite.
-                        W_u=nearestSPD(Wu);
+%                         W_u=nearestSPD(Wu);
 %                         [vec,val]=eig(Wu); val(val<=0)=eps;
 %                         W_u=vec*val*vec';
 %                         W_u=real(W_u);
 %                         W_u(isnan(W_u))=0;
+                        W_u = Wu;
                         W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
                     else
                         W_u = WuConv;
@@ -5106,13 +5116,13 @@ classdef DecodingAlgorithms
                 RhatIsotropic=0;
             end
             if(nargin<5 || isempty(RhatDiag))
-                RhatDiag=0;
+                RhatDiag=1;
             end
             if(nargin<4 || isempty(QhatIsotropic))
                 QhatIsotropic=0;
             end
             if(nargin<3 || isempty(QhatDiag))
-                QhatDiag=0;
+                QhatDiag=1;
             end
             if(nargin<2)
                 AhatDiag=0;
@@ -7824,7 +7834,7 @@ classdef DecodingAlgorithms
                 QhatIsotropic=0;
             end
             if(nargin<3 || isempty(QhatDiag))
-                QhatDiag=0;
+                QhatDiag=1;
             end
             if(nargin<2)
                 AhatDiag=0;
