@@ -38,9 +38,11 @@ classdef DecodingAlgorithms
         %all of the computations for the PPAF are done symbolically based
         %on the CIF object. However, it also means that this version is
         %must slower than the linear version below.
-        function [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT] = PPDecodeFilter(A, Q, Px0, dN,lambdaCIFColl,binwidth,x0,Pi0, yT,PiT,estimateTarget)  
+        function [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT, WConvIter] = PPDecodeFilter(A, Q, Px0, dN,lambdaCIFColl,binwidth,x0,Pi0, yT,PiT,estimateTarget,Wconv)  
             % A can be static or can be a different matrix for each time N
-
+            if(nargin<13||isempty(Wconv))
+                Wconv =[];
+            end
             [C,N]   = size(dN); % N time samples, C cells
 
             ns=size(A,1); % number of states
@@ -223,6 +225,18 @@ classdef DecodingAlgorithms
                         W_p(:,:,n+1) = W_p(:,:,n+1) + (Q*pinv(PitT(:,:,n+1)))*A*W_u(:,:,n)*A'*(Q*pinv(PitT(:,:,n+1)))';
                     end
                 end
+                if(n>1 && isempty(Wconv))
+                    diffWun = abs(trace(W_u(:,:,n))-W_u(:,:,n-1));
+                    mAbsdiffWun = max(max(diffWun));
+                    if(mAbsdiffWun<1e-6)
+                        Wconv=W_u(:,:,n);
+                        WConvIter = n;
+                    else
+                        WConvIter=[];
+                    end
+                    
+                end
+            
 
             end
             if(~isempty(yT) && estimateTarget==1)
@@ -253,7 +267,7 @@ classdef DecodingAlgorithms
         %the exponential in a Poisson or Binomial description of the CIF.
         %If such a representation is available, use of this routine is
         %recommended because it is much faster.
-        function [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT] = PPDecodeFilterLinear(A, Q, dN,mu,beta,fitType,delta,gamma,windowTimes,x0, Pi0, yT,PiT,estimateTarget)
+        function [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT,WConvIter] = PPDecodeFilterLinear(A, Q, dN,mu,beta,fitType,delta,gamma,windowTimes,x0, Pi0, yT,PiT,estimateTarget,Wconv)
         % [x_p, W_p, x_u, W_u] = PPDecodeFilterLinear(CIFType,A, Q, dN,beta,gamma,x0, xT)
         % Point process adaptive filter with the assumption of linear
         % expresion for the conditional intensity functions (see below). If
@@ -338,6 +352,9 @@ classdef DecodingAlgorithms
         % filtering.,"
         % Neural computation, vol. 16, no. 5, pp. 971?998, May. 2004.
         
+        if(nargin<15||isempty(Wconv))
+            Wconv =[];
+        end
         [C,N]   = size(dN); % N time samples, C cells
         ns=size(A,1); % number of states
         
@@ -463,7 +480,7 @@ classdef DecodingAlgorithms
                 nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
                 nst{c}.setMinTime(minTime);
                 nst{c}.setMaxTime(maxTime);
-                
+                nst{c}=nst{c}.resample(1/delta);
                 HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
 %                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
             end
@@ -545,15 +562,16 @@ classdef DecodingAlgorithms
         end %Otherwise we computed it above.
         
         HkPerm = permute(HkAll,[2 3 1]);
+        clear t;
         for n=1:N
 
 
-            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,n), W_p(:,:,n), dN,mu,beta,fitType,gamma,HkPerm,n);
+            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,n), W_p(:,:,n), dN,mu,beta,fitType,gamma,HkPerm,n,Wconv);
             % The prediction step is identical to the symbolic implementation since
             % it is independent of the CIF
 
             if((estimateTarget==1 && ~isempty(yT)) || isempty(yT))
-                [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,n), W_u(:,:,n), Amat(:,:,min(size(Amat,3),n)), Qmat(:,:,min(size(Qmat,3))));
+                [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,n), W_u(:,:,n), Amat(:,:,min(size(Amat,3),n)), Qmat(:,:,min(size(Qmat,3))),Wconv);
             else
                 %ut= Q_{t}\Pi(t,T)^{-1}\phi(t,T)(y_{T}-phi(T,t-1)x_{t-1}
                 if(n<N)
@@ -568,7 +586,46 @@ classdef DecodingAlgorithms
                     W_p(:,:,n+1) = W_p(:,:,n+1) + (Qn*invPitT)*An*W_u(:,:,n)*An'*(Qn*invPitT)';
                 end
             end
+%             t(n) = trace(W_u(:,:,n));
+%             nSmooth = 100;
+%             if(n>nSmooth*3 && isempty(Wconv))
+%                 tSig = SignalObj(0:delta:(n-1)*delta, t);
+%                 Avals = 1;
+%                 Bvals = ones(1,100)./100;
+%                 tSig = tSig.filtfilt(Bvals,Avals);
+%                 dtSig = tSig.derivative;
+%                 diffWun = abs(dtSig.data(n));
+%                 if(diffWun<1e-8)
+%                     Wconv=W_u(:,:,n);
+%                     WConvIter = n;
+%                 else
+%                     WConvIter=[];
+%                 end
+%             end
+            
+%             if(n>1 && isempty(Wconv))
+%                 diffWun = abs(trace(W_u(:,:,n))-trace(W_u(:,:,n-1)));
+%                 mAbsdiffWun = max(max(diffWun));
+% %                 [U,S,V] = svd(diffWun);
+% %                 mAbsdiffWun =max(diag(S));
+%                 if(mAbsdiffWun<1e-5)
+%                     Wconv=W_u(:,:,n);
+%                     WConvIter = n;
+%                 else
+%                     WConvIter=[];
+%                 end
+%                     
+%             end
+            WConvIter=[];
         end
+%         close all; clear t;
+%          figure(10); 
+%          for i=1:N
+%             t(i)=(trace((W_u(:,:,i)))); 
+%          end
+%          plot(t); pause
+        
+
         if(~isempty(yT) && estimateTarget==1)
            %decompose the augmented state space into estimates of the state
            %vector and the target position
@@ -591,220 +648,355 @@ classdef DecodingAlgorithms
         end
         end
       
-             %% Kalman Fixed-Interval Smoother
-        function  [x_pLag, W_pLag, x_uLag, W_uLag,x_uTLag,W_uTLag,x_pTLag,W_pTLag] = PP_fixedIntervalSmoother(A, Q, dN, lags, mu,beta,fitType,delta,gamma,windowTimes,x0, Pi0, yT,PiT,estimateTarget)
-
-            
-            nStates = size(A,2);
-
-            [C,N]   = size(dN); % N time samples, C cells
-            ns=size(A,1); % number of states
-
-            if(nargin<15 || isempty(estimateTarget))
-                estimateTarget=0;
-            end
-            if(nargin<11 || isempty(x0))
-               x0=zeros(ns,1);
-
-            end
-            if(nargin<10 || isempty(windowTimes))
-               windowTimes=[]; 
-            end
-            if(nargin<9 || isempty(gamma))
-                gamma=0;
-            end
-            if(nargin<8 || isempty(delta))
-                delta = .001;
-            end
-
-            if(nargin<14 || isempty(PiT))
-                if(estimateTarget==1)
-                    PiT = zeros(size(Q));
-                else
-                    PiT = 0*diag(ones(ns,1))*1e-6;
-                end
-            end
-            if(nargin<12 || isempty(Pi0))
-                Pi0 = zeros(ns,ns);
-            end
-            if(nargin<13 || isempty(yT))
-                yT=[];
-                Amat = A;
-                Qmat = Q;
-                ft   = zeros(size(Amat,2),N);
-                PiT = zeros(size(Q));
-
-            else
-
-                PitT= zeros(ns,ns,N);  % Pi(t,T) in Srinivasan et al. 
-                QT  = zeros(ns,ns,N);  % The noise covaraince given target observation (Q_t)
-                QN =Q(:,:,min(size(Q,3),N));
-                if(estimateTarget==1)
-
-                    PitT(:,:,N)=QN;   % Pi(T,T)=Pi_T + Q_T, setting PiT=0
-                else
-                    PitT(:,:,N)=PiT+QN;
-                end
-                PhitT = zeros(ns,ns,N);% phi(t,T) - transition matrix from time T to t
-    %             PhiTt = zeros(ns,ns,N);% phi(T,t) - transition matrix from time t to T
-                PhitT(:,:,N) = eye(ns,ns); % phi(T,T) = I
-                B = zeros(ns,ns,N);    % See Equation 2.21 in Srinivasan et. al
-
-                for n=N:-1:2
-                    An =A(:,:,min(size(A,3),n));
-                    Qn =Q(:,:,min(size(Q,3),n));
-
-                    invA=pinv(An);
-                    % state transition matrix
-                    PhitT(:,:,n-1)= invA*PhitT(:,:,n);
-    %                 PhiTt(:,:,n)= A^(N-n);
-
-                    % Equation 2.16 in Srinivasan et al. Note there is a typo in the paper. 
-                    % This is the correct expression. The term Q_t-1 does not
-                    % need to be mulitplied by phi(t-1,t)
-
-                    PitT(:,:,n-1) = invA*PitT(:,:,n)*invA'+Qn;
-
-
-
-                    if(n<=N)
-
-                        B(:,:,n) = An-(Qn*pinv(PitT(:,:,n)))*An; %Equation 2.21 in Srinivasan et. al
-                        QT(:,:,n) = Qn-(Qn*pinv(PitT(:,:,n)))*Qn';
-                    end
-                end
-                A1=A(:,:,min(size(A,3),1));
-                Q1=Q(:,:,min(size(Q,3),1));
-                B(:,:,1) = A1-(Q1*pinv(PitT(:,:,1)))*A1;
-                QT(:,:,1) = Q1-(Q1*pinv(PitT(:,:,1)))*Q1';
-
-                % See Equations 2.23 through 2.26 in Srinivasan et. al
-                if(estimateTarget==1)
-                    beta = [beta ;zeros(ns,C)];
-                    for n=1:N
-                        An =A(:,:,min(size(A,3),n));
-                        Qn =Q(:,:,min(size(Q,3),n));
-                        psi = B(:,:,n);
-                        if(n==N)
-                           gammaMat = eye(ns,ns);
-                        else
-                           gammaMat = (Qn*pinv(PitT(:,:,n)))*PhitT(:,:,n);
-                        end
-                        Amat(:,:,n) = [psi,gammaMat;
-                                      zeros(ns,ns), eye(ns,ns)];
-                        Qmat(:,:,n) = [QT(:,:,n),   zeros(ns,ns);
-                                      zeros(ns,ns) zeros(ns,ns)]; 
-                    end
-                else
-
-                    Amat = B;
-                    Qmat = QT;
-                    for n=1:N
-                        An =A(:,:,min(size(A,3),n));
-                        Qn =Q(:,:,min(size(Q,3),n));
-                        ft(:,n)   = (Qn*pinv(PitT(:,:,n)))*PhitT(:,:,n)*yT;
-                    end
-
-                end
-
-            end
-
-
-            minTime=0;
-            maxTime=(size(dN,2)-1)*delta;
-
-            C=size(dN,1);
-            if(~isempty(windowTimes))
-                histObj = History(windowTimes,minTime,maxTime);
-                HkAll = zeros(size(dN,2),length(windowTimes)-1,C);
-                for c=1:C
-                    nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
-                    nst{c}.setMinTime(minTime);
-                    nst{c}.setMaxTime(maxTime);
-
-                    HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
-    %                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
-                end
-                if(size(gamma,2)==1 && C>1) % if more than 1 cell but only 1 gamma
-                    gammaNew(:,c) = gamma;
-                else
-                    gammaNew=gamma;
-                end
-                gamma = gammaNew;
-
-            else
-                for c=1:C
-    %                 HkAll{c} = zeros(N,1);
-                    HkAll(:,:,c) = zeros(N,1);
-                    gammaNew(c)=0;
-                end
-                gamma=gammaNew;
-
-            end
-            if(size(gamma,2)~=C)
-                gamma=gamma';
-            end
+             %% Point Process Fixed-Interval Smoother
+        function  [x_uLag, W_uLag] = PP_fixedIntervalSmoother(A, Q, dN, lags, mu,beta,fitType,delta,gamma,windowTimes,x0, Pi0, yT,PiT,estimateTarget)
+        % 
+        % Assumes in both cases that 
+        %   x_t = A*x_{t-1} + w_{t}     w_{t} ~ Normal with zero me and
+        %                                       covariance Q
+        %
+        %
+        % Paramerters:
+        %  
+        % A:        The state transition matrix from the x_{t-1} to x_{t}
+        %
+        % Q:        The covariance of the process noise w_t
+        %
+        % dN:       A C x N matrix of ones and zeros corresponding to the
+        %           observed spike trains. N is the number of time steps in
+        %           my code. C is the number of cells
+        %
+        % mu:       Cx1 vector of baseline firing rates for each cell. In
+        %           the CIF expression in 'fitType' description 
+        %           mu_c=mu(c);
+        %
+        % beta:     nsxC matrix of coefficients for the conditional
+        %           intensity function. ns is the number of states in x_t 
+        %           In the conditional intesity function description below
+        %           beta_c = beta(:,c)';
+        %
+        % fitType: 'poisson' or 'binomial'. Determines how the beta and
+        %           gamma coefficients are used to compute the conditional
+        %           intensity function.
+        %           For the cth cell:
+        %           If poisson: lambda*delta = exp(mu_c+beta_c*x + gamma_c*hist_c)
+        %           If binomial: logit(lambda*delta) = mu_c+beta_c*x + gamma_c*hist_c
+        %
+        % delta:    The number of seconds per time step. This is used to compute
+        %           th history effect for each spike train using the input
+        %           windowTimes and gamma
+        %
+        % gamma:    length(windowTimes)-1 x C matrix of the history
+        %           coefficients for each window in windowTimes. In the 'fitType'
+        %           expression above:
+        %           gamma_c = gamma(:,c)';
+        %           If gamma is a length(windowTimes)-1x1 vector, then the
+        %           same history coefficients are used for each cell.
+        %
+        % windowTimes: Defines the distinct windows of time (in seconds)
+        %           that will be computed for each spike train.
+        %
+        % xT:       Target Position
+        %
+        % PiT:      Target Uncertainty
+        %
+        % estimateTarget: By default (==0), it is assumed that that the 
+        %                 initial target information is fixed. Set to 1 in order to 
+        %                 simultaneously estimate the target location via 
+        %                 state augmentation
+        %
+        %
+        %
+        % Code for reaching to final target adapted from:
+        % L. Srinivasan, U. T. Eden, A. S. Willsky, and E. N. Brown, 
+        % "A state-space analysis for reconstruction of goal-directed
+        % movements using neural signals.,"
+        % Neural computation, vol. 18, no. 10, pp. 2465?2494, Oct. 2006.
+        %
+        % Point Process Adaptive Filter from 
+        % U. T. Eden, L. M. Frank, R. Barbieri, V. Solo, and E. N. Brown, 
+        % "Dynamic analysis of neural encoding by point process adaptive
+        % filtering.,"
+        % Neural computation, vol. 16, no. 5, pp. 971?998, May. 2004.
         
-                
-            Alag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
-            Qlag = zeros((lags+1)*nStates,(lags+1)*nStates,N);
-            x0lag = zeros(length(x0)*(lags+1),1);
-            Px0lag = zeros((lags+1)*nStates,(lags+1)*nStates);
-            Px0lag((1:nStates),(1:nStates))=Pi0;
-            x0lag(1:nStates,1)=x0;
-            for n=1:N
-                offset = 0;
-                for i=1:(lags+1)
-                    if(i==1)
-                        Alag((1:nStates)+offset,(1:nStates)+offset,n)=A(:,:,min(size(A,3),n));
-                        Qlag((1:nStates)+offset,(1:nStates)+offset,n)=Q(:,:,min(size(Q,3),n));
-                    else
-                        Alag((1:nStates)+offset,(1:nStates)+(offset-nStates),n)=eye(nStates,nStates);
-                        Qlag((1:nStates)+offset,(1:nStates)+offset,n)=zeros(nStates,nStates);
-                    end
-                    offset=offset+nStates;
-                end
-            end
-            
-            betaLag = zeros((lags+1)*nStates, C);
-            betaLag(1:nStates,1:C)=beta;
-            [x_p, W_p, x_u, W_u, x_uT,W_uT,x_pT, W_pT]=DecodingAlgorithms.PPDecodeFilterLinear(Alag, Qlag, dN, mu,betaLag,fitType,delta,gamma,windowTimes,x0lag, Px0lag, yT,PiT,estimateTarget);
-            
 
-            x_pLag = x_p((lags*nStates+1):(lags+1)*nStates,:);
-            W_pLag = W_p((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
-            x_uLag = x_u((lags*nStates+1):(lags+1)*nStates,:);
-            W_uLag = W_u((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+        [C,N]   = size(dN); % N time samples, C cells
+        ns=size(A,1); % number of states
+        
+        if(nargin<15 || isempty(estimateTarget))
+            estimateTarget=0;
+        end
+        if(nargin<11 || isempty(x0))
+           x0=zeros(ns,1);
+           
+        end
+        if(nargin<10 || isempty(windowTimes))
+           windowTimes=[]; 
+        end
+        if(nargin<9 || isempty(gamma))
+            gamma=0;
+        end
+        if(nargin<8 || isempty(delta))
+            delta = .001;
+        end
+        
+        if(nargin<14 || isempty(PiT))
             if(estimateTarget==1)
-                x_uTLag = x_uT((lags*nStates+1):(lags+1)*nStates,:);
-                W_uTLag = W_uT((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
-                x_pTLag = x_pT((lags*nStates+1):(lags+1)*nStates,:);
-                W_pTLag = W_pT((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
+                PiT = zeros(size(Q));
             else
-                x_uTLag = [];
-                W_uTLag = [];
-                x_pTLag = [];
-                W_pTLag = [];
+                PiT = 0*diag(ones(ns,1))*1e-6;
             end
         end
+        if(nargin<12 || isempty(Pi0))
+            Pi0 = zeros(ns,ns);
+        end
+        if(nargin<13 || isempty(yT))
+            yT=[];
+            Amat = A;
+            Qmat = Q;
+            ft   = zeros(size(Amat,2),N);
+            PiT = zeros(size(Q));
+            
+        else
+            
+            
+            PitT= zeros(ns,ns,N);  % Pi(t,T) in Srinivasan et al. 
+            QT  = zeros(ns,ns,N);  % The noise covaraince given target observation (Q_t)
+            QN =Q(:,:,min(size(Q,3),N));
+            if(estimateTarget==1)
+                
+                PitT(:,:,N)=QN;   % Pi(T,T)=Pi_T + Q_T, setting PiT=0
+            else
+                PitT(:,:,N)=PiT+QN;
+            end
+            PhitT = zeros(ns,ns,N);% phi(t,T) - transition matrix from time T to t
+%             PhiTt = zeros(ns,ns,N);% phi(T,t) - transition matrix from time t to T
+            PhitT(:,:,N) = eye(ns,ns); % phi(T,T) = I
+            B = zeros(ns,ns,N);    % See Equation 2.21 in Srinivasan et. al
+            
+            for n=N:-1:2
+                An =A(:,:,min(size(A,3),n));
+                Qn =Q(:,:,min(size(Q,3),n));
+                
+                invA=pinv(An);
+                % state transition matrix
+                PhitT(:,:,n-1)= invA*PhitT(:,:,n);
+%                 PhiTt(:,:,n)= A^(N-n);
+
+                % Equation 2.16 in Srinivasan et al. Note there is a typo in the paper. 
+                % This is the correct expression. The term Q_t-1 does not
+                % need to be mulitplied by phi(t-1,t)
+                
+                PitT(:,:,n-1) = invA*PitT(:,:,n)*invA'+Qn;
+
+             
+
+                if(n<=N)
+                    
+                    B(:,:,n) = An-(Qn*pinv(PitT(:,:,n)))*An; %Equation 2.21 in Srinivasan et. al
+                    QT(:,:,n) = Qn-(Qn*pinv(PitT(:,:,n)))*Qn';
+                end
+            end
+            A1=A(:,:,min(size(A,3),1));
+            Q1=Q(:,:,min(size(Q,3),1));
+            B(:,:,1) = A1-(Q1*pinv(PitT(:,:,1)))*A1;
+            QT(:,:,1) = Q1-(Q1*pinv(PitT(:,:,1)))*Q1';
+
+            % See Equations 2.23 through 2.26 in Srinivasan et. al
+            if(estimateTarget==1)
+                beta = [beta ;zeros(ns,C)];
+                for n=1:N
+                    An =A(:,:,min(size(A,3),n));
+                    Qn =Q(:,:,min(size(Q,3),n));
+                    psi = B(:,:,n);
+                    if(n==N)
+                       gammaMat = eye(ns,ns);
+                    else
+                       gammaMat = (Qn*pinv(PitT(:,:,n)))*PhitT(:,:,n);
+                    end
+                    Amat(:,:,n) = [psi,gammaMat;
+                                  zeros(ns,ns), eye(ns,ns)];
+                    Qmat(:,:,n) = [QT(:,:,n),   zeros(ns,ns);
+                                  zeros(ns,ns) zeros(ns,ns)]; 
+                end
+            else
+                
+                Amat = B;
+                Qmat = QT;
+                for n=1:N
+                    An =A(:,:,min(size(A,3),n));
+                    Qn =Q(:,:,min(size(Q,3),n));
+                    ft(:,n)   = (Qn*pinv(PitT(:,:,n)))*PhitT(:,:,n)*yT;
+                end
+
+            end
+
+        end
+         
+        
+        minTime=0;
+        maxTime=(size(dN,2)-1)*delta;
+        
+        C=size(dN,1);
+        if(~isempty(windowTimes))
+            histObj = History(windowTimes,minTime,maxTime);
+            HkAll = zeros(size(dN,2),length(windowTimes)-1,C);
+            for c=1:C
+                nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
+                nst{c}.setMinTime(minTime);
+                nst{c}.setMaxTime(maxTime);
+                nst{c}=nst{c}.resample(1/delta);
+                HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
+%                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
+            end
+            if(size(gamma,2)==1 && C>1) % if more than 1 cell but only 1 gamma
+                gammaNew(:,c) = gamma;
+            else
+                gammaNew=gamma;
+            end
+            gamma = gammaNew;
+                
+        else
+            for c=1:C
+%                 HkAll{c} = zeros(N,1);
+                HkAll(:,:,c) = zeros(N,1);
+                gammaNew(c)=0;
+            end
+            gamma=gammaNew;
+            
+        end
+        if(size(gamma,2)~=C)
+            gamma=gamma';
+        end
+        
+
+        
+        %% Initialize the PPAF
+        x_p     = zeros( size(Amat,2), N+1 );
+        x_u     = zeros( size(Amat,2), N );
+        W_p    = zeros( size(Amat,2),size(Amat,2), N+1 );
+        W_u    = zeros( size(Amat,2),size(Amat,2), N );
+        
+        
+
+
+        if(~isempty(yT))
+            if(det(Pi0)==0) % Assume x0 is known exactly
+                
+            else %else
+                invPi0 = pinv(Pi0);
+                invPitT= pinv(PitT(:,:,1));
+                Pi0New = pinv(invPi0+invPitT);
+                Pi0New(isnan(Pi0New))=0;
+                x0New  = Pi0New*(invPi0*x0+invPitT*PhitT(:,:,1)*yT);
+                x0=x0New; Pi0 = Pi0New;
+            end
+        end
+        if(~isempty(yT) && estimateTarget==1)
+                x0= [x0;yT]; %simultaneous estimation of target requires state augmentation
+            
+        end
+        
+        
+        if((estimateTarget==1 && ~isempty(yT)) || isempty(yT))
+            x_p(:,1)= Amat(:,:,1)*x0;
+           
+        else
+            invPitT  = pinv(PitT(:,:,1));
+%             invPhitT = pinv(PhitT(:,:,1));
+            A1 = A(:,:,min(size(A,3),1));
+            Q1 = Q(:,:,min(size(Q,3),1));
+            invA     = pinv(A1);
+            invPhi0T = pinv(invA*PhitT(:,:,1));
+            ut(:,1) = (Q1*invPitT)*PhitT(:,:,1)*(yT-invPhi0T*x0);
+            [x_p(:,1), W_p(:,:,1)] = DecodingAlgorithms.PPDecode_predict(x0, Pi0, Amat(:,:,min(size(Amat,3),n)), Qmat(:,:,min(size(Qmat,3))));
+            x_p(:,1) = x_p(:,1)+ut(:,1);
+            W_p(:,:,1) = W_p(:,:,1) + (Q1*invPitT)*A1*Pi0*A1'*(Q1*invPitT)';
+                    
+%             x_p(:,1)= Amat(:,:,1)*x0 + ft(:,1);
+
+            
+        end
+        if(estimateTarget==1 && ~isempty(yT))
+           Pi0New = [Pi0, zeros(ns,ns);
+                     zeros(ns,ns)  , zeros(ns,ns)];
+           W_p(:,:,1) = Amat(:,:,1)*Pi0New*Amat(:,:,1)'+Qmat(:,:,1);      
+        elseif(estimateTarget==0 && isempty(yT))
+            
+           W_p(:,:,1) = Amat(:,:,1)*Pi0*Amat(:,:,1)'+Qmat(:,:,1);
+        end %Otherwise we computed it above.
+        
+        HkPerm = permute(HkAll,[2 3 1]);
+        x_uLag = zeros(size(x_u));
+        W_uLag = zeros(size(W_u));
+        for n=1:N
+
+
+            [x_u(:,n), W_u(:,:,n)] = DecodingAlgorithms.PPDecode_updateLinear(x_p(:,n), W_p(:,:,n), dN,mu,beta,fitType,gamma,HkPerm,n);
+            % The prediction step is identical to the symbolic implementation since
+            % it is independent of the CIF
+            
+
+            if((estimateTarget==1 && ~isempty(yT)) || isempty(yT))
+                [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,n), W_u(:,:,n), Amat(:,:,min(size(Amat,3),n)), Qmat(:,:,min(size(Qmat,3))));
+            else
+                %ut= Q_{t}\Pi(t,T)^{-1}\phi(t,T)(y_{T}-phi(T,t-1)x_{t-1}
+                if(n<N)
+                    An = A(:,:,min(size(A,3),n));
+                    Qn = Q(:,:,min(size(Q,3),n));
+                    invPitT  = pinv(PitT(:,:,n+1));
+                    invPhitm1T = pinv(PhitT(:,:,n));
+                    ut(:,n+1) = (Qn*invPitT)*PhitT(:,:,n+1)*(yT-invPhitm1T*x_u(:,n));
+    %                 ut(:,n+1) = ut(:,n+1)*delta;
+                    [x_p(:,n+1), W_p(:,:,n+1)] = DecodingAlgorithms.PPDecode_predict(x_u(:,n), W_u(:,:,n), Amat(:,:,min(size(A,3),n)), Qmat(:,:,min(size(Qmat,3))));
+                    x_p(:,n+1) = x_p(:,n+1)+ut(:,n+1);
+                    W_p(:,:,n+1) = W_p(:,:,n+1) + (Qn*invPitT)*An*W_u(:,:,n)*An'*(Qn*invPitT)';
+                end
+            end
+            x_K=zeros(ns, lags);
+            W_K=zeros(ns,ns,lags);
+            LnMinusk=zeros(ns, ns, lags);
+            if(n>(lags))
+                for k=1:lags
+                    
+                    LnMinusk(:,:,k)=W_u(:,:,n-k)*A(:,:,min(size(A,3),n-k))'/W_p(:,:,n+1-k);
+                    if(k==1)
+                        x_K(:,k) = x_u(:,n-k)+LnMinusk(:,:,k)*(x_u(:,n+1-k)-x_p(:,n+1-k));
+                        W_K(:,:,k)=W_u(:,:,n-k)+LnMinusk(:,:,k)*(W_u(:,:,n+1-k)-W_p(:,:,n+1-k))*LnMinusk(:,:,k)';
+                    else                
+                        x_K(:,k) = x_u(:,n-k)+LnMinusk(:,:,k)*(x_K(:,k-1)-x_p(:,n+1-k));
+                        W_K(:,:,k)=W_u(:,:,n-k)+LnMinusk(:,:,k)*(W_K(:,:,k-1)-W_p(:,:,n+1-k))*LnMinusk(:,:,k)';
+                    end
+                    W_K(:,:,k) = 0.5*(W_K(:,:,k)+W_K(:,:,k)');
+                end
+
+            end
+            x_uLag(:,n)=x_K(:,lags);
+            W_uLag(:,:,n)=W_K(:,:,lags);
+                
+
+            
+        end
+
+        
+        
+        end
         % PPAF Prediction Step 
-        function [x_p, W_p] = PPDecode_predict(x_u, W_u, A, Q)
+        function [x_p, W_p] = PPDecode_predict(x_u, W_u, A, Q,Wconv)
+            if((nargin<5)||isempty(Wconv))
+                Wconv=[];
+            end
                 % The PPDecode prediction step 
                     x_p     = A * x_u;
 
-                    W_p    = A * W_u * A' + Q;
+                    if(isempty(Wconv))
+                        W_p    = A * W_u * A' + Q;
+                    else
+                        W_p    = Wconv;
+                    end
 
-%                     if(rcond(W_p)<1000*eps)
-%                         W_p=W_u; % See Srinivasan et al. 2007 pg. 529
-%                     end
                     W_p = 0.5*(W_p+W_p');
-    %                 if(or(any(isnan(W_p)),any(isnan(W_u))))
-    %                     
-    %                     pause;
-    %                 end
-    %                 if(rcond(W_p)<=eps(W_p))
-    %                     W_p=W_u;
-    %                 end
+
         end
         % PPAF Update Step 
         %PPDecode_update takes in an object of class CIF
@@ -858,7 +1050,7 @@ classdef DecodingAlgorithms
 %                     invWu = 0.5*(invWu+invWu');
 %                     Wu = pinv(invWu);
                     I=eye(size(W_p));
-                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
+                    Wu=W_p*(I-(I+sumValMat*W_p)\(sumValMat*W_p));
 
                     % Make sure that the update covariate is positive definite.
                     W_u=nearestSPD(Wu);
@@ -866,53 +1058,14 @@ classdef DecodingAlgorithms
                 else
                     W_u=0.5*(WuConv+WuConv');
                 end
-                if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
-                % Recompute Wu based on Srinivasan et al March 2007
-                    sumValVec=zeros(size(W_p,1),1);
-                    sumValMat=zeros(size(W_p,2),size(W_p,2));
-                    lambdaDeltaMat = zeros(length(lambda),1);
-                    for C=1:length(lambda)
-
-                       if(isempty(lambda{C}.historyMat))
-                            spikeTimes =(find(dN(C,:)==1)-1)*binwidth;
-                            nst = nspikeTrain(spikeTimes);
-                            nst.resample(1/binwidth);
-                            lambdaDeltaMat(C,1) = lambda{C}.evalLambdaDelta(x_p,time_index,nst);
-                            sumValVec = sumValVec+lambda{C}.evalGradientLog(x_p,time_index,nst)'*(dN(C,end)-lambdaDeltaMat(C,1));
-                            sumValMat = sumValMat+lambda{C}.evalGradientLog(x_p,time_index,nst)'*(lambdaDeltaMat(C,1))*lambda{C}.evalGradientLog(x_p,time_index,nst);
-                       else % we already have computed the history effect and can just use it - much faster
-                            lambdaDeltaMat(C,1) = lambda{C}.evalLambdaDelta(x_p,time_index,nst); 
-                            sumValVec = sumValVec+lambda{C}.evalGradientLog(x_p,time_index)'*(dN(C,end)-lambdaDeltaMat(C,1));
-                            sumValMat = sumValMat+lambda{C}.evalGradientLog(x_p,time_index)'*(lambdaDeltaMat(C,1))*lambda{C}.evalGradientLog(x_p,time_index);
-                       end
-
-
-                    end
-%                     invWp = pinv(W_p);
-%                     invWu = invWp + sumValMat;
-%                     invWu = 0.5*(invWu+invWu');
-%                     Wu = pinv(invWu);
-
-%                     % Make sure that the update covariate is positive definite.
-%                     [vec,val]=eig(Wu); val(val<=0)=eps;
-%                     W_u=vec*val*vec';
-%                     W_u=0.5*(W_u+W_u');                    
-                    I=eye(size(W_p));
-                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
-                   % Make sure that the update covariance is positive definite.
-                    W_u=nearestSPD(Wu);
-                    W_u=0.5*(W_u+W_u');
-                end
-                % Need to add symbolic code in case of ill-conditioned W_u
-
-                x_u     = x_p + W_u*(sumValVec);
+               x_u     = x_p + W_u*(sumValVec);
 
 
         end       
         %PPDecode_updateLinear takes in a linear representation of the CIF
         %(much faster)
         function [x_u, W_u,lambdaDeltaMat] = PPDecode_updateLinear(x_p, W_p, dN,mu,beta,fitType,gamma,HkAll,time_index,WuConv)
-            [C,N]   = size(dN); % N time samples, C cells
+            C   = size(dN,1); % N time samples, C cells
             if(nargin<10|| isempty(WuConv))
                 WuConv=[];
             end
@@ -944,76 +1097,26 @@ classdef DecodingAlgorithms
                 gamma = zeros(size(mu))';
             end
             if(strcmp(fitType,'binomial'))
-%                 for c=1:C
-% 
-%                     if(numel(gamma)==1)
-%                         gammaC=gamma;
-%                     else 
-%                         gammaC=gamma(:,c);
-%                     end
-% %                     time_index
-%                     Histterm = HkAll{c};
-%                     if(numel(Histterm)~=1)
-%                         linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-%                     else
-%                         linTerm = mu(c)+beta(:,c)'*x_p + gammaC'* Histterm';
-%                     end
-%                     lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
-%                     if(isnan(lambdaDeltaMat(c,1)))
-%                         if(linTerm>1e2)
-%                             lambdaDeltaMat(c,1)=1;
-%                         else
-%                             lambdaDeltaMat(c,1)=0;
-%                         end
-%                     end
-%                     sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
-%                     sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-%                 end
-%                 Histterm = squeeze(HkAll(time_index,:,:));
-
                 %  Histtermperm = permute(HkAll,[2 3 1]); need to send it a
                 %  permuted version of HkAll
                 Histterm = HkAll(:,:,time_index);
-%                 if(~any(gamma~=0))
-%                     Histterm = Histterm';
-%                 end
-
                 if(size(Histterm,2)~=size(mu,1))
                     Histterm=Histterm';
                 end
                 linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
                 lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
-                if(isnan(lambdaDeltaMat))
-                    if(linTerm>1e2)
-                        lambdaDeltaMat=1;
-                    else
-                        lambdaDeltaMat=0;
-                    end
+                if(any(isnan(lambdaDeltaMat))||any(isinf(lambdaDeltaMat)))
+                    indNan = isnan(lambdaDeltaMat);
+                    indInf = isinf(lambdaDeltaMat);
+                    lambdaDeltaMat(indNan)=1;
+                    lambdaDeltaMat(indInf)=1;
                 end
                 sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-                sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+                tempVec = ((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))';
+%                 tempVec((tempVec<0))=0;
+%                 tempVec((tempVec>1))=1;
+                sumValMat = (repmat(tempVec,size(beta,1),1).*beta)*beta';
             elseif(strcmp(fitType,'poisson'))
-%                 for c=1:C                   
-%                     if(numel(gamma)==1)
-%                         gammaC=gamma;
-%                     else 
-%                         gammaC=gamma(:,c);
-%                     end
-%                     linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-%                     lambdaDeltaMat(c,1) = exp(linTerm);
-%                     if(isnan(lambdaDeltaMat(c,1)))
-%                         if(linTerm>1e2)
-%                             lambdaDeltaMat(c,1)=1;
-%                         else
-%                             lambdaDeltaMat(c,1)=0;
-%                         end
-%                     end
-% 
-%                     sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
-%                     sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-%                 end
-%                 Histterm = squeeze(HkAll(time_index,:,:));
-  
                 Histterm = HkAll(:,:,time_index);
   
                 if(~any(gamma~=0))
@@ -1024,110 +1127,37 @@ classdef DecodingAlgorithms
                 end
                 linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
                 lambdaDeltaMat = exp(linTerm);
-                if(isnan(lambdaDeltaMat))
-                    if(linTerm>1e2)
-                        lambdaDeltaMat=1;
-                    else
-                        lambdaDeltaMat=0;
-                    end
+                if(any(isnan(lambdaDeltaMat))||any(isinf(lambdaDeltaMat)))
+                    indNan = isnan(lambdaDeltaMat);
+                    indInf = isinf(lambdaDeltaMat);
+                    lambdaDeltaMat(indNan)=1;
+                    lambdaDeltaMat(indInf)=1;
                 end
                 sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
                 sumValMat = (repmat(lambdaDeltaMat(:,1)',size(beta,1),1).*beta)*beta';
             end
             if(isempty(WuConv))
-%                 eigWp = min(eig(W_p));
-%                 if(eigWp==0 || eigWp<eps)
-%                     usePInv=1;
-%                 else
                     usePInv=0;
-%                 end
                 if(usePInv==1)
                     % Use pinv so that we do a SVD and ignore the zero singular values
                     % Sometimes because of the state space model definition and how information
                     % is integrated from distinct CIFs the sumValMat is very sparse. This
                     % allows us to prevent inverting singular matrices
-%                     invWp = pinv(W_p);
-%                     invWu = invWp + sumValMat;
-%                     invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-%                     invWu = 0.5*(invWu+invWu');
-%                     Wu = pinv(invWu);
                     I=eye(size(W_p));
-                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
+                    Wu=W_p*(I-(I+sumValMat*W_p)\(sumValMat*W_p));
                 else
-%                     invWp = eye(size(W_p))/W_p;
-%                     invWu = invWp + sumValMat;
-%                     invWu = 0.5*(invWu+invWu');
-%                     Wu = eye(size(W_p))/invWu;
                     I=eye(size(W_p));
-                    Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
+                    Wu=W_p*(I-(I+sumValMat*W_p)\(sumValMat*W_p));
                 end 
                % Make sure that the update covariance is positive definite.
-%                 W_u=nearestSPD(Wu);
-                  W_u = Wu;
-%                 [vec,val]=eig(Wu); val(val<=0)=eps;
-%                 W_u=vec*val*vec';
-%                 W_u=real(W_u);
-%                 W_u(isnan(W_u))=0;
+                W_u=nearestSPD(Wu);
+                W_u = Wu;
                 W_u=0.5*(W_u+W_u');
             else
                 W_u = WuConv;
                 W_u=0.5*(W_u+W_u');
             end
-
-%             if(or(rcond(W_u)<1000*eps, any(isnan(W_u)))) %If ill-conditioned then recompute 
-%                 % Recompute Wu based on Srinivasan et al March 2007
-%                 sumValVec=zeros(size(W_p,1),1);
-%                 sumValMat=zeros(size(W_p,2),size(W_p,2));
-%                 if(strcmp(fitType,'binomial'))
-%                 %  Histtermperm = permute(HkAll,[2 3 1]); need to send it a
-%                 %  permuted version of HkAll
-%                     Histterm = HkAll(:,:,time_index);
-%                     if(size(Histterm,2)~=size(mu,1))
-%                         Histterm=Histterm';
-%                     end
-%                     linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
-%                     lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
-%                     if(isnan(lambdaDeltaMat))
-%                         if(linTerm>1e2)
-%                             lambdaDeltaMat=1;
-%                         else
-%                             lambdaDeltaMat=0;
-%                         end
-%                     end
-%                     sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-%                     sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
-%                 elseif(strcmp(fitType,'poisson'))
-%                     Histterm = HkAll(:,:,time_index);
-%   
-%                     if(~any(gamma~=0))
-%                         Histterm = Histterm';
-%                     end
-%                     if(size(Histterm,2)~=size(mu,1))
-%                         Histterm=Histterm';
-%                     end
-%                     linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
-%                     lambdaDeltaMat = exp(linTerm);
-%                     if(isnan(lambdaDeltaMat))
-%                         if(linTerm>1e2)
-%                             lambdaDeltaMat=1;
-%                         else
-%                             lambdaDeltaMat=0;
-%                         end
-%                     end
-%                     sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-%                     sumValMat = (repmat(lambdaDeltaMat(:,1)',size(beta,1),1).*beta)*beta';
-%                 end
-% %                 invWp = pinv(W_p);
-% %                 invWu = invWp + sumValMat;
-% %                 invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-% %                 Wu = pinv(invWu);
-%                 I=eye(size(W_p));
-%                 Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
-%                 % Make sure that the update covariate is positive definite.
-%                 W_u=nearestSPD(Wu);
-                  W_u = Wu;
-%                 W_u=0.5*(W_u+W_u');
-%             end
+%             figure(10); subplot(1,3,2);imagesc(W_u); pause(0.005);
             x_u     = x_p + W_u*(sumValVec);
 
 
@@ -1329,6 +1359,7 @@ classdef DecodingAlgorithms
                     nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*binwidth);
                     nst{c}.setMinTime(minTime);
                     nst{c}.setMaxTime(maxTime);
+                    nst{c}=nst{c}.resample(1/delta);
                     HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
                 end
                 if(size(gamma,2)==1 && C>1) % if more than 1 cell but only 1 gamma
@@ -2034,7 +2065,7 @@ classdef DecodingAlgorithms
 
          end   
         %% Kalman Filter 
-        function [x_p, Pe_p, x_u, Pe_u,Gn] = kalman_filter(A, C, Pv, Pw, Px0, x0,y)
+        function [x_p, Pe_p, x_u, Pe_u,Gn,GnConvIter] = kalman_filter(A, C, Pv, Pw, Px0, x0,y, GnConv)
             %% DT Kalman Filter
             % This implements the DT Kalman filter for the system described by
             %
@@ -2052,31 +2083,32 @@ classdef DecodingAlgorithms
             % x_u: state updates given the data
             % Pe_u: error covariance updates given the data
 
+            if(nargin<8||isempty(GnConv))
+                GnConv = [];
+            end
             N       = size(y,2); % number of time samples in the data
             x_p     = zeros( size(A,2), N+1 );
             x_u     = zeros( size(A,2), N );
             Pe_p    = zeros( size(A,2), size(A,2), N+1 );
             Gn      = zeros( size(A,2), size(C,1), N );
             Pe_u    = zeros( size(A,2), size(A,2), N );
-            
-            A1=A(:,:,min(size(A,3),1));
-            x_p(:,1)= A1*x0;
-            Pv1=Pv(:,:,min(size(Pv,3),1));
-            Pe_p(:,:,1) = A1*Px0*A1'+Pv1;
-%             GnConv=[];
+            x_p(:,1)= x0;
+            Pe_p(:,:,1) = Px0;
 
             for n=1:N
-                [x_u(:,n),   Pe_u(:,:,n), Gn(:,:,n)]   = kalman_update( x_p(:,n), Pe_p(:,:,n), C(:,:,min(size(C,3),n)), Pw(:,:,min(size(Pw,3),n)), y(:,n),[]);
-                [x_p(:,n+1), Pe_p(:,:,n+1)] = kalman_predict(x_u(:,n), Pe_u(:,:,n), A(:,:,min(size(A,3),n)), Pv(:,:,min(size(Pv,3),n)));
-%                 if(n>1 && isempty(GnConv))
-%                     diffGn = abs(Gn(:,:,n)-Gn(:,:,n-1));
-%                     mAbsdiffGn = max(max(diffGn));
-%                     if(mAbsdiffGn<1e-6)
-%                         GnConv=Gn(:,:,n);
-%                         GnConvIter = n;
-%                     end
-%                     
-%                 end
+                [x_u(:,n),   Pe_u(:,:,n), Gn(:,:,n)]   = kalman_update( x_p(:,n), Pe_p(:,:,n), C(:,:,min(size(C,3),n)), Pw(:,:,min(size(Pw,3),n)), y(:,n),GnConv);
+                [x_p(:,n+1), Pe_p(:,:,n+1)] = kalman_predict(x_u(:,n), Pe_u(:,:,n), A(:,:,min(size(A,3),n)), Pv(:,:,min(size(Pv,3),n)),GnConv);
+                if(n>1 && isempty(GnConv))
+                    diffGn = abs(Gn(:,:,n)-Gn(:,:,n-1));
+                    mAbsdiffGn = max(max(diffGn));
+                    if(mAbsdiffGn<1e-6)
+                        GnConv=Gn(:,:,n);
+                        GnConvIter = n;
+                    else
+                        GnConvIter=[];
+                    end
+                    
+                end
             end
 
         
@@ -2094,15 +2126,83 @@ classdef DecodingAlgorithms
                     x_u     = x_p + G * (y - C * x_p);
                     Pe_u    = Pe_p - G * C * Pe_p;
                     Pe_u    = 0.5*(Pe_u + Pe_u');
+
+%                     figure(10); subplot(1,3,1);imagesc(Pe_u); pause(0.005);
                 end
             %% Kalman Filter Prediction Step
-                function [x_p, Pe_p] = kalman_predict(x_u, Pe_u, A, Pv)
+                function [x_p, Pe_p] = kalman_predict(x_u, Pe_u, A, Pv,GnConv)
                 % The Kalman prediction step that implements the tracking system
                     x_p     = A * x_u;
-                    Pe_p    = A * Pe_u * A' + Pv;
+                    if(isempty(GnConv))
+                        Pe_p    = A * Pe_u * A' + Pv;
+                    else
+                        Pe_p    = Pe_u;
+                    end
                     Pe_p    = 0.5*(Pe_p + Pe_p');
                 end
         end
+        %% Kalman Fixed-Interval Smoother
+%         function  [x_pLag, Pe_pLag, x_uLag, Pe_uLag] = kalman_fixedIntervalSmoother(A, C, Pv, Pw, Px0, x0,y,lags)
+%             %y should be zero mean gaussian
+%             % only works for fixed A, C;
+%             N       = size(y,2); % number of time samples in the data
+%             nStates = size(A,2);
+%             x_p  = zeros( (lags+1)*nStates, N+1 );
+%             x_u  = zeros( (lags+1)*nStates, N );
+%             Pe_p = zeros( (lags+1)*nStates, size(A,2), N+1 );
+% %             GnLag   = zeros( (lags+1)*nStates, size(C,1), N );
+%             Pe_u = zeros( (lags+1)*nStates, size(A,2), N );
+%             x_p(1:nStates,1)= x0;
+%             Pe_p(1:nStates,1:nStates,1) = Px0;
+% 
+%             for n=1:N
+%                 [x_u(:,n),   Pe_u(:,:,n)]   = kalman_smootherUpdate( x_p(:,n), Pe_p(:,:,n), C, Pw, y(:,n),lags);
+%                 Pe_pLag(:,:,n)= ((A')^-lags)*Pe_p((1:nStates)+(lags*nStates),(1:nStates),n); %W(n-N,n|n-1) -->W(n-N,n-N|n-1)
+%                 %W(n-N,n-N|n-1) --> %W(n-N,n-N|n)
+%                 Pe_uLag(:,:,n)= Pe_pLag(:,:,n)-Pe_p((1:nStates)+(lags*nStates),(1:nStates),n)*C'/(C*Pe_p((1:nStates),(1:nStates),n)*C'+Pw)*C*Pe_p((1:nStates)+(lags*nStates),(1:nStates),n)';             
+%                 [x_p(:,n+1), Pe_p(:,:,n+1)] = kalman_smootherPredict(x_u(:,n), Pe_u(:,:,n), A, Pv,lags);
+%                 %W(n-(N-1),n-(N-1)|n) <---- %W(n-N,n-N|n)
+%                 Pe_pLag(:,:,n+1)=A*Pe_uLag(:,:,n)*A'+Pv;
+%                 
+%             end
+%             offset = (lags*nStates);
+%             x_pLag = x_p((1:nStates)+offset,:);
+%             x_uLag = x_u((1:nStates)+offset,:);
+%           
+%              %% Kalman Filter Update Equation
+%                 function [x_u, Pe_u] = kalman_smootherUpdate(x_p, Pe_p, C, Pw, y, lags)
+%                 % The Kalman update step that finds the state estimate based on new
+%                 % data
+%                 nStates = size(C,2);
+%                 I = eye(size(Pe_p(1:nStates,1:nStates)));
+%                 tempMat=(C'/(C*Pe_p(1:nStates,1:nStates)*C'+Pw));
+%                 tempVal=tempMat*(y-C*x_p(1:nStates));
+%                 offset=0;
+% 
+%                 Pe_u    = Pe_p.*repmat((I- Pe_p((1:nStates)+offset,1:nStates)*tempMat*C*Pe_p((1:nStates),1:nStates)),lags+1,1);
+%                 x_u     = x_p + Pe_p*tempVal;
+% 
+%                 Pe_u(1:nStates,1:nStates)    = 0.5*(Pe_u(1:nStates,1:nStates)  + Pe_u(1:nStates,1:nStates)');
+%                     
+%                    
+%                    
+%                 end
+%             %% Kalman Filter Prediction Step
+%                 function [x_p, Pe_p] = kalman_smootherPredict(x_u, Pe_u, A, Pv, lags)
+%                 % The Kalman prediction step that implements the tracking system
+%                 nStates = size(A,2);
+% 
+%                 Alag=zeros(length(x_u),length(x_u));
+%                 Alag(1:nStates,1:nStates)=A;
+%                 Alag((1:lags*nStates)+nStates,1:lags*nStates)=eye(lags*nStates,lags*nStates);
+%                 Qlag=zeros(length(x_u),nStates);
+%                 Qlag(1:nStates,1:nStates)=Pv;
+%                 
+%                 x_p = Alag*x_u;
+%                 Pe_p =Alag*Pe_u*A' + Qlag;
+%                 end
+%                 
+%         end
         %% Kalman Fixed-Interval Smoother
         function  [x_pLag, Pe_pLag, x_uLag, Pe_uLag] = kalman_fixedIntervalSmoother(A, C, Pv, Pw, Px0, x0,y,lags)
             %y should be zero mean gaussian
@@ -2134,7 +2234,7 @@ classdef DecodingAlgorithms
                 end
             end
            
-            [x_p, Pe_p, x_u, Pe_u,Gn] = DecodingAlgorithms.kalman_filter(Alag, Clag, Pvlag, Pwlag, Px0lag, x0lag,y);
+            [x_p, Pe_p, x_u, Pe_u] = DecodingAlgorithms.kalman_filter(Alag, Clag, Pvlag, Pwlag, Px0lag, x0lag,y);
 
             x_pLag = x_p((lags*nStates+1):(lags+1)*nStates,:);
             Pe_pLag = Pe_p((lags*nStates+1):(lags+1)*nStates,(lags*nStates+1):(lags+1)*nStates,:);
@@ -4703,7 +4803,7 @@ classdef DecodingAlgorithms
                     nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
                     nst{c}.setMinTime(minTime);
                     nst{c}.setMaxTime(maxTime);
-
+                    nst{c}=nst{c}.resample(1/delta);
                     HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
     %                 HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
                 end
@@ -4871,6 +4971,7 @@ classdef DecodingAlgorithms
                     nst{c} = nspikeTrain( (find(dN(c,:)==1)-1)*delta);
                     nst{c}.setMinTime(minTime);
                     nst{c}.setMaxTime(maxTime);
+                    nst{c}=nst{c}.resample(1/delta);
 %                     HkAll{c} = histObj.computeHistory(nst{c}).dataToMatrix;
                     HkAll(:,:,c) = histObj.computeHistory(nst{c}).dataToMatrix;
                 end
@@ -4932,78 +5033,32 @@ classdef DecodingAlgorithms
 
         end 
         function [x_u, W_u,lambdaDeltaMat] = mPPCODecode_update(x_p, W_p, C, R, y, alpha, dN,mu,beta,fitType,gamma,HkAll,time_index,WuConv)
-                    [numCells,N]   = size(dN); % N time samples, C cells
-                    if(nargin<13 || isempty(WuConv))
-                        WuConv=[];
-                    end
-                    if(nargin<12 || isempty(time_index))
-                        time_index=1;
-                    end
-                    if(nargin<11 || isempty(HkAll))
-%                         HkAll=cell(numCells,1);
-%                         for c=1:numCells
-%                             HkAll{c}=0;
-%                         end
-                          HkAll = zeros(numCells,1);
-                    end
-                    if(nargin<10 || isempty(gamma))
-                        gamma=zeros(1,numCells);
-                    end
-                    if(nargin<9 || isempty(fitType))
-                        fitType = 'poisson';
-                    end
+            [numCells,N]   = size(dN); % N time samples, C cells
+            if(nargin<13 || isempty(WuConv))
+                WuConv=[];
+            end
+            if(nargin<12 || isempty(time_index))
+                time_index=1;
+            end
+            if(nargin<11 || isempty(HkAll))
+                  HkAll = zeros(numCells,1);
+            end
+            if(nargin<10 || isempty(gamma))
+                gamma=zeros(1,numCells);
+            end
+            if(nargin<9 || isempty(fitType))
+                fitType = 'poisson';
+            end
 
-                    
-                    sumValVec=zeros(size(W_p,1),1);
-                    sumValMat=zeros(size(W_p,2),size(W_p,2));
-                    lambdaDeltaMat = zeros(numCells,1);
-%                     if(strcmp(fitType,'binomial'))
-%                         for c=1:numCells
-%                             if(numel(gamma)==1)
-%                                 gammaC=gamma;
-%                             else 
-%                                 gammaC=gamma(:,c);
-%                             end
-%                             linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-%                             lambdaDeltaMat(c,1) = exp(linTerm)./(1+exp(linTerm));
-%                             if(isnan(lambdaDeltaMat(c,1)))
-%                                 if(linTerm>1e2)
-%                                     lambdaDeltaMat(c,1)=1;
-%                                 else
-%                                     lambdaDeltaMat(c,1)=0;
-%                                 end
-%                             end
-%                             sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*(1-lambdaDeltaMat(c,1))*beta(:,c);
-%                             sumValMat = sumValMat+(dN(c,time_index)+(1-2*(lambdaDeltaMat(c,1)))).*(1-(lambdaDeltaMat(c,1))).*(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-%                         end
-%                     elseif(strcmp(fitType,'poisson'))
-%                         for c=1:numCells
-%                             if(numel(gamma)==1)
-%                                 gammaC=gamma;
-%                             else 
-%                                 gammaC=gamma(:,c);
-%                             end
-%                             linTerm = mu(c)+beta(:,c)'*x_p + gammaC'*HkAll{c}(time_index,:)';
-%                             lambdaDeltaMat(c,1) = exp(linTerm);
-%                             if(isnan(lambdaDeltaMat(c,1)))
-%                                 if(linTerm>1e2)
-%                                     lambdaDeltaMat(c,1)=1;
-%                                 else
-%                                     lambdaDeltaMat(c,1)=0;
-%                                 end
-%                             end
-% 
-%                             sumValVec = sumValVec+(dN(c,time_index)-lambdaDeltaMat(c,1))*beta(:,c);
-%                             sumValMat = sumValMat+(lambdaDeltaMat(c,1))*beta(:,c)*beta(:,c)';
-%                         end
-%                     end
-            % 
+
+            sumValVec=zeros(size(W_p,1),1);
+            sumValMat=zeros(size(W_p,2),size(W_p,2));
+            lambdaDeltaMat = zeros(numCells,1);
+
             if(numel(gamma)==1 && gamma==0)
                 gamma = zeros(size(mu))';
             end
             if(strcmp(fitType,'binomial'))
-%                 Histterm = squeeze(HkAll(time_index,:,:));
-%                 Histtermperm = permute(HkAll,[2 3 1]);
                 Histterm = HkAll(:,:,time_index);
                 if(size(Histterm,1)~=numCells) %make sure Histterm has proper orientation
                     Histterm = Histterm';
@@ -5014,20 +5069,20 @@ classdef DecodingAlgorithms
                         gamma = repmat(gamma,[1 numCells]);
                     end
                 end
-                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm);
+                    linTerm = mu+beta'*x_p + diag(gamma'*Histterm');
                     lambdaDeltaMat = exp(linTerm)./(1+exp(linTerm));
-                    if(isnan(lambdaDeltaMat))
-                        if(linTerm>1e2)
-                            lambdaDeltaMat=1;
-                        else
-                            lambdaDeltaMat=0;
-                        end
+                    if(any(isnan(lambdaDeltaMat))||any(isinf(lambdaDeltaMat)))
+                        indNan = isnan(lambdaDeltaMat);
+                        indInf = isinf(lambdaDeltaMat);
+                        lambdaDeltaMat(indNan)=1;
+                        lambdaDeltaMat(indInf)=1;
                     end
                     sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)).*(1-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
-                    sumValMat = (repmat(((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))',size(beta,1),1).*beta)*beta';
+                    tempVec = ((dN(:,time_index)+(1-2*(lambdaDeltaMat(:,1)))).*(1-(lambdaDeltaMat(:,1))).*(lambdaDeltaMat(:,1)))';
+%                     tempVec((tempVec<0))=0;
+%                     tempVec((tempVec>1))=1;
+                    sumValMat = (repmat(tempVec,size(beta,1),1).*beta)*beta';
             elseif(strcmp(fitType,'poisson'))
-%                 Histterm = squeeze(HkAll(time_index,:,:));
-%                 Histtermperm = permute(HkAll,[2 3 1]);
                 Histterm = HkAll(:,:,time_index);
                 if(size(Histterm,1)~=numCells) %make sure Histterm has proper orientation
                     Histterm = Histterm';
@@ -5041,55 +5096,29 @@ classdef DecodingAlgorithms
                         
                 linTerm = mu+beta'*x_p + diag(gamma'*Histterm');
                 lambdaDeltaMat = exp(linTerm);
-                if(isnan(lambdaDeltaMat))
-                    if(linTerm>1e2)
-                        lambdaDeltaMat=1;
-                    else
-                        lambdaDeltaMat=0;
-                    end
+                if(any(isnan(lambdaDeltaMat))||any(isinf(lambdaDeltaMat)))
+                    indNan = isnan(lambdaDeltaMat);
+                    indInf = isinf(lambdaDeltaMat);
+                    lambdaDeltaMat(indNan)=1;
+                    lambdaDeltaMat(indInf)=1;
                 end
                 sumValVec=sum(repmat(((dN(:,time_index)-lambdaDeltaMat(:,1)))',size(beta,1),1).*beta,2);
                 sumValMat = (repmat(lambdaDeltaMat(:,1)',size(beta,1),1).*beta)*beta';
             end
-                    if(isempty(WuConv))
-%                         usePInv=0;
-%                         if(usePInv==1)
-%                             % Use pinv so that we do a SVD and ignore the zero singular values
-%                             % Sometimes because of the state space model definition and how information
-%                             % is integrated from distinct CIFs the sumValMat is very sparse. This
-%                             % allows us to prevent inverting singular matrices
-%                             invWp = pinv(W_p);
-%                             invR  = eye(size(R))/R;
-%                             invWu = invWp + sumValMat +C'*invR*C;
-%                             invWu(isnan(invWu))=0; %invWu(isinf(invWu))=0;
-%                             Wu = pinv(invWu);
-% 
-%                         else
-%                             invWp = eye(size(W_p))/W_p;
-%                             invR  = eye(size(R))/R;
-%                             invWu = invWp + sumValMat +C'*invR*C;
-%                             Wu = eye(size(W_p))/invWu;
-                        sumValMat = sumValMat+C'*(R\C);
-                        I=eye(size(W_p));
-                        Wu=W_p*(I-(I+sumValMat*W_p)\sumValMat*W_p);
-%                         end 
-%                         Wu = .5*(Wu + Wu'); %To help with symmetry of matrix;
-                        if(any(any(isnan(Wu)))||any(any(isinf(Wu))))
-                            Wu=W_p;
-                        end
-                       % Make sure that the update covariance is positive definite.
-%                         W_u=nearestSPD(Wu);
-%                         [vec,val]=eig(Wu); val(val<=0)=eps;
-%                         W_u=vec*val*vec';
-%                         W_u=real(W_u);
-%                         W_u(isnan(W_u))=0;
-                        W_u = Wu;
-                        W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
-                    else
-                        W_u = WuConv;
-%                         invR  = eye(size(R))/R;
-                    end
-                    x_u     = x_p + W_u*(sumValVec)+((W_u*C')/R)*(y-C*x_p -alpha);
+            if(isempty(WuConv))
+                sumValMat = sumValMat+C'*(R\C);
+                I=eye(size(W_p));
+                Wu=W_p*(I-(I+sumValMat*W_p)\(sumValMat*W_p));
+                if(any(any(isnan(Wu)))||any(any(isinf(Wu))))
+                    Wu=W_p;
+                end
+               % Make sure that the update covariance is positive definite.
+                W_u = Wu;
+                W_u = .5*(W_u + W_u'); %To help with symmetry of matrix;
+            else
+                W_u = WuConv;
+            end
+            x_u     = x_p + W_u*(sumValVec)+((W_u*C')/R)*(y-C*x_p -alpha);
 
 
         end
