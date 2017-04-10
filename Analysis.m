@@ -82,6 +82,7 @@ end
             ensHistObj=cell(numNeurons,1);
             AIC   =zeros(numNeurons,1);
             BIC   =zeros(numNeurons,1);
+            logLL =zeros(numNeurons,1);
             windowSize = .01; % 1/tObj.sampleRate;% for Residual Computation;
             spikeTraining = cell(1,numNeurons);
             XvalData =cell(numNeurons,1);
@@ -98,7 +99,12 @@ end
             for i=1:configColl.numConfigs
                 configColl.setConfig(tObj,i);
 %                 fprintf(strcat('Analyzing Configuration #',num2str(i)));
-                pools = matlabpool('size');
+                pool = gcp('nocreate');
+                if(isempty(pool))
+                    pools = 0;
+                else
+                    pools = pool.NumWorkers;
+                end%matlabpool('size');
                 if(pools==0)
                     if(batchMode==0)
                         fprintf(strcat('Analyzing Configuration #',num2str(i),': Neuron #'));
@@ -117,9 +123,9 @@ end
                             numHist{j}{i} = tObj.getNumHist;
                             histObj{j}{i} = tObj.history;
                             ensHistObj{j}{i} = tObj.ensCovHist;
-                            [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                            [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp, distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
                             lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
-                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp; logLL(j,i) = logLLTemp;
                             distrib{j}{i} =distribTemp;
                             spikeTraining{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
                             spikeTraining{j}.setName(num2str(neuronNumber(j)));
@@ -177,15 +183,15 @@ end
                             histObj{j}{i} = tObj.history;
                             ensHistObj{j}{i} = tObj.ensCovHist;
                              if(isa(neuronNames,'cell'))
-                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
                              elseif(isa(neuronNames,'char'))
-                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
                              else
-                                [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                                [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
                              end
 
                             lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
-                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp; logLL(j,i) = logLLTemp;
                             distrib{j}{i} =distribTemp;
                              if(isa(neuronNames,'cell'))
                                 currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames{j}));
@@ -263,9 +269,9 @@ end
                             numHist{j}{i} = tObj.getNumHist;
                             histObj{j}{i} = tObj.history;
                             ensHistObj{j}{i} = tObj.ensCovHist;
-                            [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                            [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
                             lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
-                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp; logLL(j,i)=logLLTemp;
                             distrib{j}{i} =distribTemp;
                             spikeTraining{j} = tObj.nspikeColl.getNST(neuronNumber(j));%.nstCopy;
                             spikeTraining{j}.setName(num2str(neuronNumber(j)));
@@ -295,15 +301,15 @@ end
                             histObj{j}{i} = tObj.history;
                             ensHistObj{j}{i} = tObj.ensCovHist;
                              if(isa(neuronNames,'cell'))
-                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber{j},i,Algorithm);
                              elseif(isa(neuronNames,'char'))
-                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
+                                 [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber,i,Algorithm);
                              else
-                                [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
+                                [lambdaTemp, bTemp, devTemp, statsTemp,AICTemp,BICTemp,logLLTemp,distribTemp] = Analysis.GLMFit(tObj,neuronNumber(j),i,Algorithm);
                              end
 
                             lambda{j}{i} = lambdaTemp; b{j}{i} = bTemp; stats{j}{i} = statsTemp;
-                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp;
+                            dev(j,i) = devTemp;  AIC(j,i)= AICTemp; BIC(j,i)= BICTemp; logLL(j,i) = logLLTemp;
                             distrib{j}{i} =distribTemp;
                              if(isa(neuronNames,'cell'))
                                 currSpikes=tObj.nspikeColl.getNST(tObj.getNeuronIndFromName(neuronNames{j}));
@@ -395,11 +401,11 @@ end
 
             fitResults =cell(length(neuronNumber),1);
             for j=1:numNeurons
-                fitResults{j}=FitResult(spikeTraining{j},labels{j},numHist{j},histObj{j},ensHistObj{j},lambda{j},b{j}, dev(j,:), stats{j},AIC(j,:),BIC(j,:),configColl,XvalData{j},XvalTime{j},distrib{j});
+                fitResults{j}=FitResult(spikeTraining{j},labels{j},numHist{j},histObj{j},ensHistObj{j},lambda{j},b{j}, dev(j,:), stats{j},AIC(j,:),BIC(j,:),logLL(j,:),configColl,XvalData{j},XvalTime{j},distrib{j});
                 if(diff(tObj.validationWindow)~=0)
                     tObj.setTrialTimesFor('validation');
-                    lambdaValidation = fitResults{j}.computeValLambda;
-                    ValResults = FitResult(spikeValidation{j},labels{j},numHist{j},histObj{j},ensHistObj{j},lambdaValidation,b{j}, dev(j,:), stats{j},AIC(j,:),BIC(j,:),configColl,XvalData{j},XvalTime{j},distrib);
+                    [lambdaValidation, logLLValidation] = fitResults{j}.computeValLambda;
+                    ValResults = FitResult(spikeValidation{j},labels{j},numHist{j},histObj{j},ensHistObj{j},lambdaValidation,b{j}, dev(j,:), stats{j},AIC(j,:),BIC(j,:),logLLValidation,configColl,XvalData{j},XvalTime{j},distrib);
                     fitResults{j}.validation = ValResults; %validation field is actually another fitResults object but with the validation data
                 end
                 %% Process the results and compute further parameters
@@ -479,7 +485,7 @@ end
         end
             
         
-        function [lambda,b, dev, stats,AIC, BIC,distribution] = GLMFit(tObj,neuronNumber,lambdaIndex,Algorithm)
+        function [lambda,b, dev, stats,AIC, BIC,logLL, distribution] = GLMFit(tObj,neuronNumber,lambdaIndex,Algorithm)
             % [lambda,b, dev, stats,AIC, BIC] = GLMFit(tObj,neuronNumber,lambdaIndex,Algorithm)
             % Given a trial, tObj, and a neuronNumber specifying a neuron
             % from the trial, extracts the design matrix X from the current
@@ -504,6 +510,7 @@ end
             %          (p-values,std dev, etc.)
             % AIC    - Akaike's information criteria for this regression.
             % BIC    - Bayes Information Criteria for this regression.
+            % logLL  - Log Likelihood evaluated with the fit parameters.
 
             if(nargin<4)
               Algorithm='GLM';
@@ -621,6 +628,9 @@ end
                 %and therefore any imaginary part is ignored.
                 AIC = 2*length(b)+real(dev);
                 BIC = length(b)*log(length(y))+real(dev);
+                delta = 1/tObj.sampleRate;
+                logLL =sum(y.*log(data*delta)+(1-y).*(1-data*delta));
+               
         end        
         function handle = plotInvGausTrans(fitResults,makePlot)
             % handle = plotInvGausTrans(fitResults,makePlot)
@@ -734,15 +744,18 @@ end
             % for independence of the xj's. Independence of the xj's
             % suggests indepence of the uj's and zj's (a condition
             % necessary for the Time Rescaling Theorem).
-            
             U=1-exp(-Z);
             U(U>=.999999)=.999999; %Prevent any 1 values which lead to infinity in X
             U(U==0)=.000001;
             X = norminv(U,0,1);
             %X=erfinv(U);
             [~,colm] = size(X);
-            for i=1:colm
-                [c(:,i),lags] = xcov(X(:,i));
+            if(~isempty(X))
+                for i=1:colm
+                    [c(:,i),lags] = xcov(X(:,i));
+                end
+            else
+                 [c,lags] = xcov(X);
             end
             index=find(lags==1);
             lags=lags(index:end);
@@ -751,9 +764,9 @@ end
             % Defaults to the 95% confidence intervals
             % Can extend to allow selection of 95% or 99% CI
             confBound = 1.96/sqrt(n)*ones(length(lags),1);
-%              size(lags)
-%              size(rho)
-            
+    %              size(lags)
+    %              size(rho)
+
             confBoundSig = SignalObj(lags,[confBound -confBound],'ACF[ \Phi^{-1}(u_i) ]','\Delta \tau','sec');
             confBoundSig.setPlotProps({' ''r'', ''LineWidth'' ,3'},1);
             confBoundSig.setPlotProps({' ''r'', ''LineWidth'' ,3'},2);
@@ -761,12 +774,14 @@ end
             handle=[];
             rhoSig = SignalObj(lags,rho, 'ACF[ \Phi^-1(u_i) ]','Lag \Delta \tau','sec');
             plotProps = cell(1,colm);
-            for i=1:colm
-                plotProps{i}=strcat('''', '.',Analysis.colors{mod(i-1,length(Analysis.colors))+1},'''');
+            if(~isempty(X))
+                for i=1:colm
+                    plotProps{i}=strcat('''', '.',Analysis.colors{mod(i-1,length(Analysis.colors))+1},'''');
+                end
+            else
+                plotProps=strcat('''', '.',Analysis.colors{1},'''');
             end
             rhoSig.setPlotProps(plotProps);
-   
-            
             
         end        
         function [Z,U,xAxis,KSSorted, ks_stat] = computeKSStats(nspikeObj,lambdaInput,DTCorrection)
@@ -995,6 +1010,71 @@ end
             tcc = ConfigColl(tc); 
             fitResults =Analysis.RunAnalysisForNeuron(ensembTrial,neuronNum,tcc,makePlot);
         end
+        
+        function [fitResults,gammaMat,phiMat,devianceMat,sigMat] = computeGrangerCausalityMatrix(tObj, Algorithm,confidenceInterval, batchMode)
+            if(nargin<4 || isempty(batchMode))
+                batchMode = 0;
+            end
+            if(nargin<3 || isempty(confidenceInterval))
+                confidenceInterval = 0.95;
+            end
+            if(nargin<2 || isempty(Algorithm))
+                Algorithm = 'GLM';
+            end
+            
+            neuronNum = tObj.getNeuronIndFromMask;
+            covMask   = tObj.covMask;
+            history   = tObj.history;
+            ensCovHist = tObj.ensCovHist;
+            ensCovMask= tObj.ensCovMask;
+            sampleRate= tObj.sampleRate;
+            DTCorrection = 1;
+            makePlot=0;
+            clear fitResults;
+            gammaMat=zeros(length(neuronNum),length(neuronNum));
+            for i=1:length(neuronNum)
+                    tc{1}=TrialConfig(covMask, sampleRate, history, ensCovHist, ensCovMask); tc{1}.setName('Baseline');
+                    neighbors = find(ensCovMask(:,i)==1);
+                    
+                    for j=1:length(neighbors)
+                        ensCovMaskTemp = ensCovMask;
+                        ensCovMaskTemp(neighbors(j),neuronNum)=0;
+                    
+                        tc{2}=TrialConfig(covMask, sampleRate, history, ensCovHist, ensCovMaskTemp); tc{2}.setName([num2str(neighbors(j)) 'excluded from ' num2str(neuronNum(i))]);
+                        tcc = ConfigColl(tc);             
+            
+                        fitResults{i}{j} =Analysis.RunAnalysisForNeuron(tObj,neuronNum(i),tcc,makePlot,Algorithm,DTCorrection,batchMode);
+                    end
+            end
+            for i=1:length(neuronNum)
+                neighbors = find(ensCovMask(:,i)==1);
+                for j=1:length(neighbors)
+                    gammaMat(neighbors(j),neuronNum(i)) = fitResults{i}{j}.logLL(2)-fitResults{i}{j}.logLL(1);
+                    [coeffMat, labels, SEMat] = fitResults{i}{j}.getCoeffs(1);
+                    coeffInd=strfind(labels,[num2str(neighbors(j)) ':[']);
+                    gammaVals =coeffMat(~isempty(coeffInd));
+                    phiMat(neighbors(j),neuronNum(i)) = -sign(sum(gammaVals))*gammaMat(neighbors(j),neuronNum(i));
+                    dimDiff(neighbors(j),neuronNum(i)) = abs(diff(fitResults{i}{j}.numCoeffs));
+                    valConfInt(neighbors(j),neuronNum(i)) = chi2inv(confidenceInterval,dimDiff(neighbors(j),neuronNum(i)));
+                end
+            end
+            devianceMat = -2*gammaMat;
+            nonZeros = find(devianceMat~=0);
+            pVals = chi2cdf(devianceMat(nonZeros),dimDiff(nonZeros),'upper');
+            
+            
+            [h, crit_p, adj_p]=fdr_bh(pVals,1-confidenceInterval,'pdep','no');
+           
+%             sigMat = (devianceMat>valConfInt);
+            sigMat = zeros(size(devianceMat));
+            sigMat(nonZeros) = h;
+            
+            tObj.resetEnsCovMask;
+            
+            %RunAnalysisForAllNeurons(tObj,configs,makePlot,Algorithm,DTCorrection,batchMode)
+         
+           
+        end
         function [fitResults,tcc] = computeHistLag(tObj,neuronNum,windowTimes,CovLabels,Algorithm,batchMode,sampleRate,makePlot,histMinTimes,histMaxTimes)
             % [fitResults,tcc] = computeHistLag(tObj,tObj,neuronNum,windowTimes,CovLabels,sampleRate,makePlot)
             % For the neuron in neuronNum, runs an analysis with self
@@ -1031,7 +1111,7 @@ end
                 neuronNum = tObj.getNeuronIndFromMask;
             end
             
-            % tcObj=TrialConfig(covMask,sampleRate, history,minTime,maxTime)
+            % tcObj=TrialConfig(covMask,sampleRate, history,ensCovHist,ensCovMask,covLag,name)
             tc=cell(1,length(windowTimes)-1);
             for i=1:length(tc)+1
                 %use no covariates
@@ -1465,4 +1545,232 @@ function [rst,varargout] = ksdiscrete(pk,st,spikeflag)
     varargout{3}=cb;    
 
     varargout{4}=sort(rstold);
+end
+
+
+% fdr_bh() - Executes the Benjamini & Hochberg (1995) and the Benjamini &
+%            Yekutieli (2001) procedure for controlling the false discovery 
+%            rate (FDR) of a family of hypothesis tests. FDR is the expected
+%            proportion of rejected hypotheses that are mistakenly rejected 
+%            (i.e., the null hypothesis is actually true for those tests). 
+%            FDR is a somewhat less conservative/more powerful method for 
+%            correcting for multiple comparisons than procedures like Bonferroni
+%            correction that provide strong control of the family-wise
+%            error rate (i.e., the probability that one or more null
+%            hypotheses are mistakenly rejected).
+%
+%            This function also returns the false coverage-statement rate 
+%            (FCR)-adjusted selected confidence interval coverage (i.e.,
+%            the coverage needed to construct multiple comparison corrected
+%            confidence intervals that correspond to the FDR-adjusted p-values).
+%
+%
+% Usage:
+%  >> [h, crit_p, adj_ci_cvrg, adj_p]=fdr_bh(pvals,q,method,report);
+%
+% Required Input:
+%   pvals - A vector or matrix (two dimensions or more) containing the
+%           p-value of each individual test in a family of tests.
+%
+% Optional Inputs:
+%   q       - The desired false discovery rate. {default: 0.05}
+%   method  - ['pdep' or 'dep'] If 'pdep,' the original Bejnamini & Hochberg
+%             FDR procedure is used, which is guaranteed to be accurate if
+%             the individual tests are independent or positively dependent
+%             (e.g., Gaussian variables that are positively correlated or
+%             independent).  If 'dep,' the FDR procedure
+%             described in Benjamini & Yekutieli (2001) that is guaranteed
+%             to be accurate for any test dependency structure (e.g.,
+%             Gaussian variables with any covariance matrix) is used. 'dep'
+%             is always appropriate to use but is less powerful than 'pdep.'
+%             {default: 'pdep'}
+%   report  - ['yes' or 'no'] If 'yes', a brief summary of FDR results are
+%             output to the MATLAB command line {default: 'no'}
+%
+%
+% Outputs:
+%   h       - A binary vector or matrix of the same size as the input "pvals."
+%             If the ith element of h is 1, then the test that produced the 
+%             ith p-value in pvals is significant (i.e., the null hypothesis
+%             of the test is rejected).
+%   crit_p  - All uncorrected p-values less than or equal to crit_p are 
+%             significant (i.e., their null hypotheses are rejected).  If 
+%             no p-values are significant, crit_p=0.
+%   adj_ci_cvrg - The FCR-adjusted BH- or BY-selected 
+%             confidence interval coverage. For any p-values that 
+%             are significant after FDR adjustment, this gives you the
+%             proportion of coverage (e.g., 0.99) you should use when generating
+%             confidence intervals for those parameters. In other words,
+%             this allows you to correct your confidence intervals for
+%             multiple comparisons. You can NOT obtain confidence intervals 
+%             for non-significant p-values. The adjusted confidence intervals
+%             guarantee that the expected FCR is less than or equal to q
+%             if using the appropriate FDR control algorithm for the  
+%             dependency structure of your data (Benjamini & Yekutieli, 2005).
+%             FCR (i.e., false coverage-statement rate) is the proportion 
+%             of confidence intervals you construct
+%             that miss the true value of the parameter. adj_ci=NaN if no
+%             p-values are significant after adjustment.
+%   adj_p   - All adjusted p-values less than or equal to q are significant
+%             (i.e., their null hypotheses are rejected). Note, adjusted 
+%             p-values can be greater than 1.
+%
+%
+% References:
+%   Benjamini, Y. & Hochberg, Y. (1995) Controlling the false discovery
+%     rate: A practical and powerful approach to multiple testing. Journal
+%     of the Royal Statistical Society, Series B (Methodological). 57(1),
+%     289-300.
+%
+%   Benjamini, Y. & Yekutieli, D. (2001) The control of the false discovery
+%     rate in multiple testing under dependency. The Annals of Statistics.
+%     29(4), 1165-1188.
+%
+%   Benjamini, Y., & Yekutieli, D. (2005). False discovery rate?adjusted 
+%     multiple confidence intervals for selected parameters. Journal of the 
+%     American Statistical Association, 100(469), 71?81. doi:10.1198/016214504000001907
+%
+%
+% Example:
+%  nullVars=randn(12,15);
+%  [~, p_null]=ttest(nullVars); %15 tests where the null hypothesis
+%  %is true
+%  effectVars=randn(12,5)+1;
+%  [~, p_effect]=ttest(effectVars); %5 tests where the null
+%  %hypothesis is false
+%  [h, crit_p, adj_ci_cvrg, adj_p]=fdr_bh([p_null p_effect],.05,'pdep','yes');
+%  data=[nullVars effectVars];
+%  fcr_adj_cis=NaN*zeros(2,20); %initialize confidence interval bounds to NaN
+%  if ~isnan(adj_ci_cvrg),
+%     sigIds=find(h);
+%     fcr_adj_cis(:,sigIds)=tCIs(data(:,sigIds),adj_ci_cvrg); % tCIs.m is available on the
+%     %Mathworks File Exchagne
+%  end
+%
+%
+% For a review of false discovery rate control and other contemporary
+% techniques for correcting for multiple comparisons see:
+%
+%   Groppe, D.M., Urbach, T.P., & Kutas, M. (2011) Mass univariate analysis 
+% of event-related brain potentials/fields I: A critical tutorial review. 
+% Psychophysiology, 48(12) pp. 1711-1725, DOI: 10.1111/j.1469-8986.2011.01273.x 
+% http://www.cogsci.ucsd.edu/~dgroppe/PUBLICATIONS/mass_uni_preprint1.pdf
+%
+%
+% For a review of FCR-adjusted confidence intervals (CIs) and other techniques 
+% for adjusting CIs for multiple comparisons see:
+%
+%   Groppe, D.M. (in press) Combating the scientific decline effect with 
+% confidence (intervals). Psychophysiology.
+% http://biorxiv.org/content/biorxiv/early/2015/12/10/034074.full.pdf
+%
+%
+% Author:
+% David M. Groppe
+% Kutaslab
+% Dept. of Cognitive Science
+% University of California, San Diego
+% March 24, 2010
+
+%%%%%%%%%%%%%%%% REVISION LOG %%%%%%%%%%%%%%%%%
+%
+% 5/7/2010-Added FDR adjusted p-values
+% 5/14/2013- D.H.J. Poot, Erasmus MC, improved run-time complexity
+% 10/2015- Now returns FCR adjusted confidence intervals
+
+function [h, crit_p, adj_ci_cvrg, adj_p]=fdr_bh(pvals,q,method,report)
+
+if nargin<1,
+    error('You need to provide a vector or matrix of p-values.');
+else
+    if ~isempty(find(pvals<0,1)),
+        error('Some p-values are less than 0.');
+    elseif ~isempty(find(pvals>1,1)),
+        error('Some p-values are greater than 1.');
+    end
+end
+
+if nargin<2,
+    q=.05;
+end
+
+if nargin<3,
+    method='pdep';
+end
+
+if nargin<4,
+    report='no';
+end
+
+s=size(pvals);
+if (length(s)>2) || s(1)>1,
+    [p_sorted, sort_ids]=sort(reshape(pvals,1,prod(s)));
+else
+    %p-values are already a row vector
+    [p_sorted, sort_ids]=sort(pvals);
+end
+[dummy, unsort_ids]=sort(sort_ids); %indexes to return p_sorted to pvals order
+m=length(p_sorted); %number of tests
+
+if strcmpi(method,'pdep'),
+    %BH procedure for independence or positive dependence
+    thresh=(1:m)*q/m;
+    wtd_p=m*p_sorted./(1:m);
+    
+elseif strcmpi(method,'dep')
+    %BH procedure for any dependency structure
+    denom=m*sum(1./(1:m));
+    thresh=(1:m)*q/denom;
+    wtd_p=denom*p_sorted./[1:m];
+    %Note, it can produce adjusted p-values greater than 1!
+    %compute adjusted p-values
+else
+    error('Argument ''method'' needs to be ''pdep'' or ''dep''.');
+end
+
+if nargout>3,
+    %compute adjusted p-values; This can be a bit computationally intensive
+    adj_p=zeros(1,m)*NaN;
+    [wtd_p_sorted, wtd_p_sindex] = sort( wtd_p );
+    nextfill = 1;
+    for k = 1 : m
+        if wtd_p_sindex(k)>=nextfill
+            adj_p(nextfill:wtd_p_sindex(k)) = wtd_p_sorted(k);
+            nextfill = wtd_p_sindex(k)+1;
+            if nextfill>m
+                break;
+            end;
+        end;
+    end;
+    adj_p=reshape(adj_p(unsort_ids),s);
+end
+
+rej=p_sorted<=thresh;
+max_id=find(rej,1,'last'); %find greatest significant pvalue
+if isempty(max_id),
+    crit_p=0;
+    h=pvals*0;
+    adj_ci_cvrg=NaN;
+else
+    crit_p=p_sorted(max_id);
+    h=pvals<=crit_p;
+    adj_ci_cvrg=1-thresh(max_id);
+end
+
+if strcmpi(report,'yes'),
+    n_sig=sum(p_sorted<=crit_p);
+    if n_sig==1,
+        fprintf('Out of %d tests, %d is significant using a false discovery rate of %f.\n',m,n_sig,q);
+    else
+        fprintf('Out of %d tests, %d are significant using a false discovery rate of %f.\n',m,n_sig,q);
+    end
+    if strcmpi(method,'pdep'),
+        fprintf('FDR/FCR procedure used is guaranteed valid for independent or positively dependent tests.\n');
+    else
+        fprintf('FDR/FCR procedure used is guaranteed valid for independent or dependent tests.\n');
+    end
+end
+
+
+
 end

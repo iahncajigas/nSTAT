@@ -36,6 +36,7 @@ classdef FitResSummary < handle
         dev
         AIC % AIC matrix (length(neuronNumbers) x numResults)
         BIC % BIC matrix (length(neuronNumbers) x numResults)
+        logLL % logLL matrix (length(neuronNumners) x numResults)
         bAct
         seAct
         sigIndex
@@ -77,6 +78,7 @@ classdef FitResSummary < handle
                    frsObj.dev           = nan(length(fitResultsCell),maxNumResults);
                    frsObj.AIC           = nan(length(fitResultsCell),maxNumResults);
                    frsObj.BIC           = nan(length(fitResultsCell),maxNumResults);
+                   frsObj.logLL         = nan(length(fitResultsCell),maxNumResults);
                    frsObj.KSStats       = nan(length(fitResultsCell),maxNumResults);
                    frsObj.KSPvalues     = nan(length(fitResultsCell),maxNumResults);
                    frsObj.withinConfInt = zeros(length(fitResultsCell),maxNumResults);
@@ -85,6 +87,7 @@ classdef FitResSummary < handle
                         frsObj.dev(i,1:length(fitResultsCell{i}.dev))                   = fitResultsCell{i}.dev(1:end);
                         frsObj.AIC(i,1:length(fitResultsCell{i}.AIC))                   = fitResultsCell{i}.AIC(1:end);
                         frsObj.BIC(i,1:length(fitResultsCell{i}.BIC))                   = fitResultsCell{i}.BIC(1:end);
+                        frsObj.logLL(i,1:length(fitResultsCell{i}.logLL))               = fitResultsCell{i}.logLL(1:end);
                         frsObj.covLabels{i}               = fitResultsCell{i}.uniqueCovLabels;
                        %flatMask(:,:,i)                   = fitResultsCell{i}.flatMask;
                         frsObj.fitResCell{i}              = fitResultsCell{i};
@@ -212,6 +215,34 @@ classdef FitResSummary < handle
             end
             
         end     
+        
+        function [dlogLL, handle] = getDifflogLL(frsObj,diffIndex,makePlot,h)
+            % [dlogLL, handle] = getDifflogLL(frsObj,diffIndex,makePlot,h)
+            % Takes the logLL matrix and returns a matrix with N-1 columns
+            % containing the difference between all columns of the original
+            % matrix minus the column indicated by diffIndex. The zero
+            % column corresponding to diffIndex is removed from the orginal
+            % dlogLL matrix
+            if(nargin<4)
+                h=gca;
+            end
+            if(nargin<3 || isempty(makePlot))
+                makePlot=1;
+            end
+            if(nargin<2 || isempty(diffIndex))
+                diffIndex = 1;
+            end
+            if(frsObj.numResults>1)
+                dlogLL=computeDiffMat(frsObj.logLL,diffIndex);
+            else
+                dlogLL=frsObj.logLL;
+            end
+            if(makePlot==1)
+                handle=frsObj.boxPlot(dlogLL,diffIndex,h);
+            end
+            
+        end  
+        
         function [N,edges,percentSig] = binCoeffs(frsObj,minVal,maxVal,binSize)
             % [N,edges,percentSig] = binCoeffs(frsObj,minVal,maxVal,binSize)
             % Does a histogram of the regression coefficients across all
@@ -305,10 +336,10 @@ classdef FitResSummary < handle
             makePlot=1;
 %             [~, h1] = frsObj.getDiffAIC(1,makePlot,h(1)); ylabel('\Delta AIC');
 %             [~, h2] = frsObj.getDiffBIC(1,makePlot,h(2)); ylabel('\Delta BIC');
-            subplot(2,1,1); h1=frsObj.getDiffAIC(1); ylabel('\Delta AIC'); 
-            subplot(2,1,2); h2=frsObj.getDiffBIC(1); ylabel('\Delta BIC'); 
-            
-            handle = [h1,h2];
+            subplot(3,1,1); h1=frsObj.getDiffAIC(1); ylabel('\Delta AIC'); 
+            subplot(3,1,2); h2=frsObj.getDiffBIC(1); ylabel('\Delta BIC'); 
+            subplot(3,1,3); h3=frsObj.getDifflogLL(1); ylabel('\Delta logLL'); 
+            handle = [h1,h2,h3];
         end
         function handle = plotAllCoeffs(frsObj,h,fitNum,plotProps,plotSignificance,subIndex)
             % handle = plotAllCoeffs(frsObj,h)
@@ -518,6 +549,29 @@ classdef FitResSummary < handle
            end
         end
         
+        function handle = plotlogLL(frsObj)
+            % handle = plotlogLL(frsObj)
+            % Plot mean +/- 1 standard error from the mean for the logLL for
+            % each fit.
+           logLLdata=frsObj.logLL;
+           mData=nanmean(logLLdata,1);
+           numNeurons = size(logLLdata,1);
+           sData=nanstd(logLLdata,0,1)./sqrt(numNeurons);
+           ciUp = mData+sData;
+           ciDown = mData-sData;
+           
+           x=1:frsObj.numResults;
+           plot(x,mData,'r','Linewidth',3); hold all;
+           faceColor='r';
+           p=patch([x, fliplr(x)],[ciUp fliplr(ciDown)],faceColor);
+           set(p,'facecolor',faceColor,'edgecolor','none');
+           alpha(.5);     
+%            set(gca,'xticklabelmode','auto','xtickmode','auto');
+           set(gca,'xtick',x,'xticklabel',frsObj.fitNames);
+           if(length(x)>1)
+                xticklabel_rotate([],90,[],'Fontsize',8);%rotateticklabel(gca,-90); 
+           end
+        end
         
         function handle = plotResidualSummary(frsObj)
             handle = figure;

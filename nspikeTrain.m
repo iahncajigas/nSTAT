@@ -62,12 +62,30 @@ classdef nspikeTrain < handle
         %%TODO add listener to each spike train so that consistency is
         %%guaranteed of objects are modified.
         isSigRepBin % Boolean indicating 1 or 0 spikes occur per bin
+        xlabelval
+        xunits
+        yunits
+        dataLabels
+        B    %burstiness parameter
+        An   %burtiness parameters without finite sample effect - Kim, E.-K., & Jo, H.-H. (2016). Measuring burstiness for finite event sequences. Physical Review E, 94(3). http://doi.org/10.1103/physreve.94.032311
+        
     end
     
     methods
-        function nst=nspikeTrain(spikeTimes,name,binwidth,minTime,maxTime, varargin)
-            %varargin: xlabelval, xunits, yunits,dataLabels to Signal
+        function nst=nspikeTrain(spikeTimes,name,binwidth,minTime,maxTime, xlabelval, xunits, yunits,dataLabels)
             %constructor
+            if(nargin<9 || isempty(dataLabels))
+                dataLabels = '';
+            end
+            if(nargin<8 || isempty(yunits))
+                yunits='';
+            end
+            if(nargin<7 || isempty(xunits))
+                xunits='s';
+            end
+            if(nargin<6 || isempty(xlabelval))
+                xlabelval='time';
+            end
             if(nargin<5)
                 maxTime = max(spikeTimes);
                 if(isempty(maxTime))
@@ -100,10 +118,25 @@ classdef nspikeTrain < handle
             nst.sampleRate = 1/binwidth;
             nst.minTime = minTime;
             nst.maxTime = maxTime;
-            nst.setSigRep(binwidth, minTime, maxTime,varargin{:});
+            nst.xlabelval = xlabelval;
+            nst.xunits = xunits;
+            nst.yunits = yunits;
+            nst.dataLabels = dataLabels;
+%             nst.setSigRep(binwidth, minTime, maxTime,varargin{:});
 
-%             nst.sigRep = [];
-%             nst.isSigRepBin=[];
+            nst.sigRep = [];
+            nst.isSigRepBin=[];
+
+            
+            ISI=nst.getISIs;
+%             ISI = [spikeTimes(1); ISI; nst.maxTime-spikeTimes(end)];
+            spikeTimes =nst.spikeTimes;
+            sigma=std(ISI);
+            mu = mean(ISI);
+            r= sigma/mu;
+            nst.B = (r-1)/(r+1);
+            n=length(spikeTimes);
+            nst.An=(sqrt(n+2)*r-sqrt(n))./((sqrt(n+2)-2)*r+sqrt(n));
         end
 %         function shift(nstObj,deltaT)
 %            nstObj.spikeTimes = nstObj.spikeTimes + deltaT;
@@ -122,13 +155,12 @@ classdef nspikeTrain < handle
 %                 nstObj.sigRep.setName(name);
 %            end
         end
-        function sigRep = setSigRep(nstObj, varargin)
-            %sigRep = setSigRep(nstObj, varargin)
-            %varargin: binwidth,minTime,maxTime,xlabelval, xunits,yunits,dataLabels
-              nstObj.sigRep = nstObj.getSigRep(varargin{:});
+        function sigRep = setSigRep(nstObj,binwidth,minTime,maxTime)
+            %sigRep = setSigRep(nstObj, binwidth, minTime, maxTime)
+              nstObj.sigRep = nstObj.getSigRep(binwidth,minTime,maxTime);
               nstObj.isSigRepBin = nstObj.isSigRepBinary;
               nstObj.sampleRate = nstObj.sigRep.sampleRate;
-              sigRep=nstObj.sigRep;
+%               sigRep=nstObj.sigRep;
               nstObj.minTime = nstObj.sigRep.minTime;
               nstObj.maxTime = nstObj.sigRep.maxTime;
         end        
@@ -162,13 +194,15 @@ classdef nspikeTrain < handle
             % SignalObj representation of the nSpikeTrain
             % may change the nstObj.isSigRepBin value is the binwidth is
             % great than nstObj.getMaxBinSizeBinary
-            %s=nstObj.sigRep;
-            %binwidth=1/sampleRate;
-            %nstObj.setSigRep(binwidth,nstObj.minTime,nstObj.maxTime,s.xlabelval,s.xunits);
+%             s=nstObj.sigRep;
+            binwidth=1/sampleRate;
+            nstObj.setSigRep(binwidth,nstObj.minTime,nstObj.maxTime);
             nstObj.sampleRate = sampleRate;
-        end            
-        function sigRep=getSigRep(nstObj,binwidth,minTime,maxTime,varargin)
-            % sigRep=getSigRep(nstObj,binwidth,minTime,maxTime,varargin)
+        end       
+
+        
+        function sigRep=getSigRep(nstObj,binwidth,minTime,maxTime)
+            % sigRep=getSigRep(nstObj,binwidth,minTime,maxTime)
             % returns the SignalObj representation of the nspikeTrain with
             % the parameters specified.
             %
@@ -193,17 +227,22 @@ classdef nspikeTrain < handle
                 end
                 if((nargin<2) || isempty(binwidth))
                     binwidth=1/nstObj.sampleRate; 
+                    precision =ceil(log10(nstObj.sampleRate));
+                    binwidth = roundn(binwidth,-precision); 
                 end
-                  if(and(~isempty(maxTime),~isempty(minTime)))
-                    timeVec=linspace(minTime,maxTime,ceil((1/binwidth)*abs(maxTime-minTime)/binwidth)*binwidth+1); %scaling by binwidth to avoid roundoff error
-                    windowTimes=[minTime-binwidth/2 timeVec+binwidth/2];
-                  else
-                      timeVec = [];
-                      windowTimes=[];
-                  end
-                  data=zeros(length(timeVec),1);
+                precision =ceil(log10(1/binwidth));
+                binwidth = roundn(binwidth,-precision); 
+                if(and(~isempty(maxTime),~isempty(minTime)))
+                %                     timeVec=linspace(minTime,maxTime,ceil((1/binwidth)*abs(maxTime-minTime)/binwidth)*binwidth+1); %scaling by binwidth to avoid roundoff error
+                timeVec=linspace(minTime,maxTime,(maxTime-minTime)./binwidth +1);%:binwidth:maxTime;
+                windowTimes=[minTime-binwidth/2 timeVec+binwidth/2];
+                else
+                  timeVec = [];
+                  windowTimes=[];
+                end
+                data=zeros(length(timeVec),1);
                   
-                  
+
     
                   %If we already have the right signal representation they dont
                   %waste time.
@@ -213,8 +252,10 @@ classdef nspikeTrain < handle
                         else %create the appropriate representation
 
                             spikeTimes = nstObj.spikeTimes;
-                            spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
-                            windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
+%                             spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
+                            spikeTimes = roundn(spikeTimes,-precision);
+%                             windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
+                            windowTimes    = roundn(windowTimes,-precision-1);
                             lwindowTimes = length(windowTimes);
                             for j=1:length(timeVec) %number of bins
                                 if(j==(lwindowTimes-1))
@@ -237,16 +278,23 @@ classdef nspikeTrain < handle
 %                             data(:,end)= sT(:,end)>=tV(:,end-1) & sT(:,end)<=tV(:,end);
 % %                             data=[sum(data) 0];
                          
-                            sigRep = SignalObj(timeVec, data',nstObj.name,varargin{:});
+                            sigRep = SignalObj(timeVec, data',nstObj.name,nstObj.xlabelval, nstObj.xunits, nstObj.yunits, nstObj.dataLabels);
                             nstObj.sigRep = sigRep;
-                            nstObj.isSigRepBin=nstObj.isSigRepBinary;
+                            if(max(sigRep.data)>1)
+                                nstObj.isSigRepBin=0;
+                            else
+                                nstObj.isSigRepBin=1;
+                            end
+%                             nstObj.isSigRepBin=nstObj.isSigRepBinary;
                         end 
                    else
                         %rounding avoids comparison errors due to
                         %differences in non-significant digits
                         spikeTimes = nstObj.spikeTimes;
-                        spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
-                        windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
+%                             spikeTimes = round(spikeTimes*nstObj.sampleRate*2)/(nstObj.sampleRate*2);
+                        spikeTimes = roundn(spikeTimes,-precision);
+%                             windowTimes    = round(windowTimes*nstObj.sampleRate*2)/(2*nstObj.sampleRate);
+                        windowTimes    = roundn(windowTimes,-precision-1);
                         lwindowTimes = length(windowTimes);
                         %                         ltimeVec = length(timeVec);
                         for j=1:length(timeVec) %number of bins
@@ -278,12 +326,20 @@ classdef nspikeTrain < handle
 %                          data(:,end)= sT(:,end)>=tV(:,end-1) & sT(:,end)<=tV(:,end);
 %                          data=[sum(data) 0];
                         
-                        sigRep = SignalObj(timeVec, data',nstObj.name,varargin{:});
+                        sigRep = SignalObj(timeVec, data',nstObj.name,nstObj.xlabelval, nstObj.xunits, nstObj.yunits, nstObj.dataLabels);
                         nstObj.sigRep = sigRep;
-                        nstObj.isSigRepBin=nstObj.isSigRepBinary;
-                   end
-                  nstObj.sigRep = sigRep;
-                  nstObj.isSigRepBin=nstObj.isSigRepBinary;
+                        if(max(sigRep.data)>1)
+                            nstObj.isSigRepBin=0;
+                        else
+                            nstObj.isSigRepBin=1;
+                        end
+                    end
+                    nstObj.sigRep = sigRep;
+                    if(max(sigRep.data)>1)
+                        nstObj.isSigRepBin=0;
+                    else
+                        nstObj.isSigRepBin=1;
+                    end
             %end
         end
         function maxBinSize=getMaxBinSizeBinary(nstObj)
@@ -296,6 +352,21 @@ classdef nspikeTrain < handle
                 maxBinSize=inf;
             end
         end
+        function h = plotISISpectrumFunction(nstObj)
+            figure;
+            ISI=nstObj.getISIs;
+            spikeTimes =nstObj.spikeTimes;
+            h=plot(spikeTimes(2:end),ISI,'.');
+            xlabel('time [s]');
+            ylabel('ISI [s]');
+            sigma=std(ISI);
+            mu = mean(ISI);
+            r= sigma/mu;
+            B = (r-1)/(r+1);
+            n=length(spikeTimes);
+            An=(sqrt(n+2)*r-sqrt(n))./((sqrt(n+2)-2)*r+sqrt(n));
+        end
+        
         function windowedSpikeTimes = getSpikeTimes(nstObj, minTime,maxTime)
             if(nargin<3)
                 maxTime = nstObj.maxTime;
@@ -314,7 +385,7 @@ classdef nspikeTrain < handle
               handle=gca;
             end 
             if(nargin<4 || isempty(numBins))
-                numBins = 200;
+                numBins = 1000;
             end
             if(nargin<3 || isempty(maxTime))
                 maxTime = nstObj.maxTime;
@@ -324,20 +395,34 @@ classdef nspikeTrain < handle
             end
             
             
-            ISIs = nstObj.getISIs(minTime,maxTime);
-            
-            binWidth=max(ISIs)/numBins;
+            ISIs = nstObj.getISIs;
+            index=and(ISIs>=minTime, ISIs<=maxTime);
+            ISIs = ISIs(index);
+            binWidth=.001; %max(ISIs)/numBins;
 %             binWidth=1/numBins;
-            bins=0:binWidth:max(ISIs);
+            if(~isempty(ISIs))
+                bins=0:binWidth:max(ISIs);
 
-            %Make the ISI Histogram            
-            counts = histc(ISIs,bins);
+                %Make the ISI Histogram            
+                counts = histc(ISIs,bins);
 
-            %set(gcf,'CurrentAxes',handle);
-            bar(bins,histc(ISIs,bins)./sum(binWidth*counts),'histc');
-            set(get(gca,'Children'),'MarkerEdgeColor',[0 0 0],...
+                %set(gcf,'CurrentAxes',handle);
+                %bar(bins,histc(ISIs,bins)./sum(binWidth*counts),'histc');
+                h=bar(bins,histc(ISIs,bins),'histc');
+                set(h,'MarkerEdgeColor',[0 0 0],...
                 'LineWidth',2,...
                 'FaceColor',[0.831372559070587 0.815686285495758 0.7843137383461]);
+            end
+            
+            
+            axis tight;
+            hx=xlabel('ISI [sec]');
+%             hy=ylabel([nstObj.name ' counts']);
+            hy=ylabel('Spike Counts');
+            set([hx, hy],'FontName', 'Arial','FontSize',16,'FontWeight','bold');
+            v=axis;
+            axis([minTime, maxTime, v(3:4)]);
+            
             %histfit(ISIs,numBins,'exponential');
 %             h = get(gca,'Children');
 %             set(h,'FaceColor',[.8 .8 1])
@@ -380,11 +465,7 @@ classdef nspikeTrain < handle
 %             legend([hfit1(1) hfit2(1) hfit3(1)] ,{expStr,wblStr,gammaStr});
 %             
 %             legend(hfit1(1) ,expStr);
-            axis tight;
-            hx=xlabel('ISI [sec]');
-%             hy=ylabel([nstObj.name ' counts']);
-            hy=ylabel('Spike Counts');
-            set([hx, hy],'FontName', 'Arial','FontSize',16,'FontWeight','bold');
+
 
 %             subplot(1,2,2); nstObj.plotProbPlot(minTime,maxTime);
             
@@ -461,10 +542,19 @@ classdef nspikeTrain < handle
                 minTime = nstObj.minTime;
             end
             spikeTimes = nstObj.getSpikeTimes(minTime,maxTime);
-            ISIs = diff(spikeTimes);
+            ISIs = diff(spikeTimes)';
         
         end
         
+        function minISI = getMinISI(nstObj,minTime, maxTime)
+            if(nargin<3 || isempty(maxTime))
+                maxTime = nstObj.maxTime;
+            end
+            if(nargin<2 || isempty(minTime))
+                minTime = nstObj.minTime;
+            end
+            minISI = min(nstObj.getISIs(minTime,maxTime));
+        end
         function nstCollObj = partitionNST(nstObj, windowTimes,normalizeTime,lbound,ubound)
             if(nargin<5 || isempty(ubound))
                 if(nargin>4)
@@ -563,6 +653,9 @@ classdef nspikeTrain < handle
 %                   answer=1;
 %               end      
 %             else
+              if(isempty(nstObj.sigRep))
+                  nstObj.getSigRep;
+              end
               if(max(nstObj.sigRep.data)>1)
                   answer=0;
               else
@@ -704,7 +797,11 @@ classdef nspikeTrain < handle
             binwidth   = 1/structure.sampleRate;
             minTime    = structure.minTime;
             maxTime    = structure.maxTime;
-            nstObj=nspikeTrain(spikeTimes,name,binwidth,minTime,maxTime);
+            xlabelval  = structure.xlabelval;
+            xunits     = structure.xunits;
+            yunits     = structure.yunits;
+            dataLabels = structure.dataLabels;
+            nstObj=nspikeTrain(spikeTimes,name,binwidth,minTime,maxTime,xlabelval, xunits, yunits,dataLabels);
         end
     end
     

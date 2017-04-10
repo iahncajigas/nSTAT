@@ -865,7 +865,7 @@ classdef CIF < handle
             spikeTrainColl.setMinTime(lambda.minTime);
             spikeTrainColl.setMaxTime(lambda.maxTime);
         end
-        
+         
         function [spikeTrainColl, lambda]=simulateCIFByThinning(mu,hist,stim,ens,inputStimSignal,inputEnsSignal,numRealizations,simType)
             % spikeTrainColl=simulateCIF(mu,hist,stim,inputStimSignal,inputEnsSignal,numRealizations)
             % Returns a nstColl with numRealization different nspikeTrain

@@ -153,7 +153,13 @@ classdef SignalObj < handle
             if(nargin<8)
                 plotProps = cell(s.dimension,1);
             end
-            deltaT = round(1000*mean(diff(s.time)))/1000; %To avoid round-off error, when computing samplerate
+            deltaT=mean(diff(s.time));
+            if(isnan(deltaT))%diff not well defined 
+                deltaT=0.001;
+            end
+            precision =ceil(log10(1/deltaT));
+            deltaT = roundn(deltaT,-precision);             
+%             deltaT = roundn(mean(diff(s.time)),-3); %To avoid round-off error, when computing samplerate
             s.sampleRate = 1/deltaT; 
             s.origSampleRate = s.sampleRate;
             s.name=name;
@@ -225,7 +231,7 @@ classdef SignalObj < handle
             % setSampleRate(sObj, sampleRate)
             % sets the current sampleRate of the object to rate specified
             if(sObj.sampleRate~=sampleRate)
-                if(~(floor(sampleRate*200)/200==floor(sObj.sampleRate*200)/200)) %Compare to 2 decimal places (finite precision has caused errors 500.000001 ~= 500.00000x
+                if(~(floor(sampleRate*1000)/1000==floor(sObj.sampleRate*1000)/1000)) %Compare to 3 decimal places (finite precision has caused errors 500.000001 ~= 500.00000x
                     if(sampleRate>sObj.sampleRate)
                         %fprintf(strcat('SignalObj,',sObj.name',', upsampled to:',num2str(sampleRate)));
                     else
@@ -263,6 +269,14 @@ classdef SignalObj < handle
                     else
                         error('Need the number of labels to match the number of dimensions of the SignalObj');
                     end
+                end
+            else
+                if(sObj.dimension==1)
+                    sObj.dataLabels='';
+                else
+                   for i=1:sObj.dimension
+                       sObj.dataLabels{i}='';
+                   end
                 end
             end
         end
@@ -761,8 +775,14 @@ classdef SignalObj < handle
             
             s3.setName(strcat('\frac{d}{',denomstr,'}',s3.name));
             for i=1:s3.dimension
-                if(~strcmp(sObj.dataLabels{i},''))
-                    s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels{i});
+                if(s3.dimension ==1)
+                    if(~strcmp(sObj.dataLabels,''))
+                        s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels);
+                    end
+                else
+                    if(~strcmp(sObj.dataLabels{i},''))
+                        s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels{i});
+                    end
                 end
             end
         end        
@@ -1061,6 +1081,34 @@ classdef SignalObj < handle
             [m,index]=min(sObj.data,varargin{:});
             time = sObj.time(index);
         end
+        
+        function s = autocorrelation(sObj)
+            if(sObj.dimension==1)
+                 [ACF,lags,bounds] = crosscorr(sObj.data,sObj.data,length(sObj.data)-1);
+                 s=SignalObj(lags/sObj.sampleRate, ACF,['ACF(' sObj.name, ')'], 'Lag', sObj.xunits, [sObj.yunits '^2']);
+            else
+                %if more than one dimension then computes the
+                %autocorrelation of each dimension with itself
+                for i=1:sObj.dimension
+                    
+                    [ACF(:,i),lags,bounds] = crosscor(sObj.data(:,i),sObj.data(:,i),length(sObj.data(:,i))-1);
+                    
+                end
+                s=SignalObj(lags/sObj.sampleRate, ACF,['ACF(' sObj.name, ')'], 'Lag', sObj.xunits, [sObj.yunits '^2']);
+            end
+           
+        end
+        
+        function s = crosscorrelation(sObj, s2)
+            if(and(sObj.dimension ==1, s2.dimension==1))
+                
+             [xcf,lags,bounds] = crosscorr(sObj.data, s2.data,length(sObj.data)-1);
+             s=SignalObj(lags/sObj.sampleRate, xcf,['XCORF(' sObj.name, ')'], 'Lag', sObj.xunits, [sObj.yunits '^2']);
+            else
+                error('Does not support multidimensional signals');
+            end
+        end
+        
         function periodogram = periodogram(sObj)
             %periodogram = periodogram(sObj)
             % computes the periodogram of each component of the SignalObj.
@@ -1131,19 +1179,23 @@ classdef SignalObj < handle
                 h=plot(hpsd); legend(h, sObj.dataLabels{i},strcat('-',str1),strcat('+',str1));
             end
         end
-        function h = spectrogram(sObj)
+        function h = spectrogram(sObj,freqVec)
+            if(nargin<2)
+                freqVec=0:1:100;
+            end
             t=sObj.time;             % 2 secs @ 1kHz sample rate
             x=sObj.data;             % Start @ DC, cross 150Hz at t=1sec 
-            F = 0:.1:100;
+            F = freqVec;
             
             clear y f t p;
             for i=1:sObj.dimension;
                 figure;
-                [y{i},f{i},t{i},p{i}] = spectrogram(x(:,i),256,250,F,sObj.sampleRate,'yaxis'); 
+                [y{i},f{i},t{i},p{i}] = spectrogram(x(:,i),2048,1000,F,sObj.sampleRate);                  
                 surf(t{i},f{i},10*log10(abs(p{i})),'EdgeColor','none');   
                 axis xy; axis tight; colormap(jet); view(0,90);
                 xlabel('Time');
                 ylabel('Frequency (Hz)');
+                
             end
             
         end
@@ -1314,9 +1366,13 @@ classdef SignalObj < handle
                 maxTime=sObj.maxTime;
                 newTime=minTime:1/newSampleRate:maxTime;
                 newData=zeros(length(newTime),sObj.dimension);
-                for i=1:sObj.dimension
-    %                 newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'spline','extrap');
-                    newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'nearest',0);
+                if(size(sObj.data,1)>1)
+                    for i=1:sObj.dimension
+        %                 newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'spline','extrap');
+                        newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'nearest',0);
+                    end
+                else
+                    newData = sObj.data;
                 end
                 sObj.time=newTime';
                 sObj.data=newData;
@@ -1402,7 +1458,8 @@ classdef SignalObj < handle
             if(deltaT~=0)
                 newMinTime = sOut.minTime+deltaT;
                 newMaxTime = sOut.maxTime+deltaT;
-                newTime=newMinTime:1/sOut.sampleRate:newMaxTime;
+                newTime = sOut.time + deltaT;
+%                 newTime=newMinTime:1/sOut.sampleRate:newMaxTime;
                 sOut.time = newTime;
                 sOut.minTime = newMinTime;
                 sOut.maxTime = newMaxTime;
@@ -1544,11 +1601,11 @@ classdef SignalObj < handle
             indices=cell(1,sObj.dimension);
             if(strcmp(type,'maxima'))
                 for i=1:sObj.dimension
-                    [values{i},indices{i}] = findPeaks(sObj.data(:,i),'MINPEAKDISTANCE',minDistance);
+                    [values{i},indices{i}] = findpeaks(sObj.data(:,i),'MINPEAKDISTANCE',minDistance);
                 end
             elseif(strcmp(type,'minima'))
                 for i=1:sObj.dimension
-                    [values{i},indices{i}] = findPeaks(sObj.data(:,i),'MINPEAKDISTANCE',minDistance);
+                    [values{i},indices{i}] = findpeaks(sObj.data(:,i),'MINPEAKDISTANCE',minDistance);
                 end
             end
         end
@@ -1633,7 +1690,13 @@ classdef SignalObj < handle
             structure.xlabelval   = sObj.xlabelval;
             structure.xunits      = sObj.xunits;
             structure.yunits      = sObj.yunits;
-            structure.dataLabels  = sObj.dataLabels(selectorArray);
+            if(isa(sObj.dataLabels,'char'))
+                structure.dataLabels  = sObj.dataLabels;
+            elseif(isa(sObj.dataLabels,'cell'))
+                structure.dataLabels  = sObj.dataLabels(selectorArray);
+            else
+                structure.dataLabels = [];
+            end
             structure.dataMask    = sObj.dataMask(selectorArray);
             structure.sampleRate  = sObj.sampleRate;
             structure.plotProps   = sObj.plotProps(selectorArray);

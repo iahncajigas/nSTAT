@@ -40,6 +40,7 @@ classdef FitResult < handle
        dev          %deviance for each fit
        AIC          %Akaike's Information Criterion for each fit
        BIC          %Baysian Information Criterion for each fit
+       logLL        %Log Likelihood
        stats        %Relevant statistics for each fit
        configs      % the config collection for the different fits
        configNames  % names of the the differen fits
@@ -75,7 +76,7 @@ classdef FitResult < handle
 
     methods 
      
-        function fitObj=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObj,lambda,b, dev, stats,AIC,BIC,configColl,XvalData,XvalTime,distribution)
+        function fitObj=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObj,lambda,b, dev, stats,AIC,BIC,logLL, configColl,XvalData,XvalTime,distribution)
             % fitObj=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObj,lambda,b, dev, stats,AIC,BIC,configColl,XvalData,XvalTime)
             % Stores the results of multiple regressions for a single  neuron into a accessible structure.
             %
@@ -153,7 +154,7 @@ classdef FitResult < handle
             fitObj.numHist=numHist;
             fitObj.histObjects = histObjects;
             fitObj.ensHistObjects = ensHistObj;
-            fitObj.addParamsToFit(fitObj.neuronNumber,lambda,b, dev, stats,AIC,BIC,configColl);
+            fitObj.addParamsToFit(fitObj.neuronNumber,lambda,b, dev, stats,AIC,BIC,logLL,configColl);
             fitObj.Z        =[]; %rescaled spikes times - exponentially dist.
             fitObj.U        =[]; %rescaled spike times - uniformly dist.
             fitObj.X        =[]; %rescaled spike times - gaussian dist.
@@ -198,6 +199,7 @@ classdef FitResult < handle
                     dev = [fitObj.dev newFitObj.dev];
                     AIC = [fitObj.AIC newFitObj.AIC];
                     BIC = [fitObj.BIC newFitObj.BIC];
+                    logLL = [fitObj.logLL newFit.logLL];
                     stats=fitObj.stats(1:fitObj.numResults);
                     stats((fitObj.numResults+1):(fitObj.numResults+newFitObj.numResults)) = newFitObj.stats(1:newFitObj.numResults);
                     lambda = fitObj.lambda.merge(newFitObj.lambda);
@@ -246,7 +248,7 @@ classdef FitResult < handle
                         
                     end
                     ks_stat  = [fitObj.KSStats.ks_stat newFitObj.KSStats.ks_stat];
-                    mFitRes=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObjects,lambda,b, dev, stats,AIC,BIC,configColl,XvalData,XvalTime,distribution);
+                    mFitRes=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObjects,lambda,b, dev, stats,AIC,BIC,logLL,configColl,XvalData,XvalTime,distribution);
                     mFitRes.setKSStats(Z,U, xAxis, KSSorted, ks_stat);
                     mFitRes.setInvGausStats(X,rhoSig,confBoundSig);
                     mFitRes.setFitResidual(M);
@@ -266,7 +268,44 @@ classdef FitResult < handle
             end
             
         end
-        function addParamsToFit(fitObj,neuronNum,lambda,b, dev, stats,AIC,BIC,configColl)
+        function subsetFit = getSubsetFitResult(fitObj,subfits)
+            %subfits is a row vector with numbers corresponding to the
+            %subfits
+            if(and(min(subfits)>0,max(subfits)<=fitObj.numResults))
+                spikeObj = fitObj.neuralSpikeTrain;
+                covLabels = fitObj.covLabels(subfits);
+                numHist = fitObj.numHist(subfits);
+                histObjects = fitObj.histObjects(subfits);
+                ensHistObj = fitObj.ensHistObjects(subfits);
+                lambda = fitObj.lambda.getSubSignal(subfits);
+                b = fitObj.b(subfits);
+                dev = fitObj.dev(subfits);
+                stats = fitObj.stats(subfits);
+                AIC = fitObj.AIC(subfits);
+                BIC = fitObj.BIC(subfits);
+                logLL = fitObj.logLL(subfits);
+                configColl = fitObj.configs.getSubsetConfigs(subfits);
+                XvalData  = fitObj.XvalData;
+                XvalTime  = fitObj.XvalTime;
+                distribution = fitObj.fitType;
+
+                subsetFit=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObj,lambda,b, dev, stats,AIC,BIC,logLL,configColl,XvalData,XvalTime,distribution);
+                Z = fitObj.Z(:,subfits);
+                U = fitObj.U(:,subfits);
+                X = fitObj.X(:,subfits);
+                xAxis= fitObj.KSStats.xAxis(:,subfits);
+                KSSorted=fitObj.KSStats.KSSorted(:,subfits);
+                ks_stat=fitObj.KSStats.ks_stat(subfits);
+                rhoSig=fitObj.invGausStats.rhoSig.getSubSignal(subfits);
+                confBoundSig=fitObj.invGausStats.confBoundSig;
+                M = fitObj.Residual.getSubSignal(subfits);
+
+                subsetFit.setKSStats(Z,U, xAxis, KSSorted, ks_stat);
+                subsetFit.setInvGausStats(X,rhoSig,confBoundSig);
+                subsetFit.setFitResidual(M);
+            end
+        end
+        function addParamsToFit(fitObj,neuronNum,lambda,b, dev, stats,AIC,BIC,logLL,configColl)
             % addParamsToFit(fitObj,neuronNum,lambda,b, dev, stats,AIC,BIC,configColl)
             % Add the specified parameters to the current FitResult object
             % only if the neuronNum matches the neuronNum of this object
@@ -293,9 +332,12 @@ classdef FitResult < handle
                       if(nargin<7)
                           fitObj.AIC(fitObj.numResults+1)  = 2*length(b)+dev;
                           fitObj.BIC(fitObj.numResults+1)  = length(b)*log(length(newLambda.time))+dev;
+                          delta = 1/newLambda.sampleRate;
+                          fitObj.logLL(fitObj.numResults+1) = sum(y.*log(data*delta)+(1-y).*(1-newLambda.data*delta));
                       else
                           fitObj.AIC(fitObj.numResults+1)  = AIC;
                           fitObj.BIC(fitObj.numResults+1)  = BIC;
+                          fitObj.logLL(fitObj.numResults+1) = logLL;
                       end
                           
                       fitObj.numCoeffs(fitObj.numResults+1) = length(b);
@@ -308,9 +350,14 @@ classdef FitResult < handle
                       if(nargin<7)
                           fitObj.AIC(fitObj.numResults+i)  = 2*length(b{i})+dev(i);
                           fitObj.BIC(fitObj.numResults+i)  = length(b{i})*log(length(newLambda.time))+dev(i);
+                          delta=fitObj.neuralSpikeTrain.sampleRate;
+                          y=fitObj.neuralSpikeTrain.getSigRep.dataToMatrix;
+                          
+                          fitObj.logLL(fitObj.numResults+i)= sum(y.*log(newLambda.data*delta)+(1-y).*(1-newLambda.data*delta));
                       else
                           fitObj.AIC(fitObj.numResults+i)  = AIC(i);
                           fitObj.BIC(fitObj.numResults+i)  = BIC(i);
+                          fitObj.logLL(fitObj.numResults+i)= logLL(i);
                       end
                       fitObj.numCoeffs(fitObj.numResults+i) = length(b{i});
                   end
@@ -334,7 +381,7 @@ classdef FitResult < handle
               error('Neuron number does not match');
           end
         end
-        function lambda = computeValLambda(fitObj)
+        function [lambda, logLL] = computeValLambda(fitObj)
             % lambda = computeValLambda(fitObj)
             % Returns a Covariate object lambda. This is the Conditional
             % intensity function evaluated using the validation data
@@ -345,6 +392,9 @@ classdef FitResult < handle
             lambda=Covariate(fitObj.XvalTime{1},lambdaData,...
                   '\lambda(t)',fitObj.lambda.xlabelval,...
                   fitObj.lambda.xunits,'Hz',fitObj.lambda.dataLabels);
+            delta = 1/lambda.sampleRate;
+            y=fitObj.neuralSpikeTrain.getSigRep.dataToMatrix;
+            logLL =sum(y.*log(lambda.data*delta)+(1-y).*(1-lambda.data*delta));
         end
         
         function mapCovLabelsToUniqueLabels(fitObj)
@@ -742,6 +792,7 @@ classdef FitResult < handle
           end
             
         end
+        
         function [coeffMat, labels, SEMat] = getCoeffs(fitObj, fitNum)
              if(nargin<2 || isempty(fitNum))
                 fitNum =1:fitObj.numResults;
@@ -1099,21 +1150,23 @@ classdef FitResult < handle
         %     size(xAxis) 
         %     size(KSSorted)
             N = length(fitObj.KSStats.KSSorted);
-            xaxis = fitObj.KSStats.xAxis(:,1);
-            % Plot the CIs
-            plot(xaxis,xaxis, 'k-.'); hold on;
-            plot(xaxis, xaxis+1.36/sqrt(N), 'r','Linewidth',1); 
-            plot(xaxis,xaxis-1.36/sqrt(N), 'r','Linewidth',1 );
-            handle=plot(fitObj.KSStats.xAxis(:,fitNum),fitObj.KSStats.KSSorted(:,fitNum),'Linewidth',2);
+            if(~isempty(fitObj.KSStats.xAxis))
+                xaxis = fitObj.KSStats.xAxis(:,1);
+                % Plot the CIs
+                plot(xaxis,xaxis, 'k-.'); hold on;
+                plot(xaxis, xaxis+1.36/sqrt(N), 'r','Linewidth',1); 
+                plot(xaxis,xaxis-1.36/sqrt(N), 'r','Linewidth',1 );
+                handle=plot(fitObj.KSStats.xAxis(:,fitNum),fitObj.KSStats.KSSorted(:,fitNum),'Linewidth',2);
             
-            %set(gca,'xtick',[],'ytick',[],'ztick', [])
-            axis( [0 1 0 1] );
+                %set(gca,'xtick',[],'ytick',[],'ztick', [])
+                axis( [0 1 0 1] );
 %             dataLabels = cell(1,fitObj.lambda.dimension);
 %             for i=1:fitObj.lambda.dimension
                 dataLabels = fitObj.lambda.dataLabels(fitNum);
 %             end
-            h_legend=legend(handle,dataLabels,'Location','SouthEast');
-            set(h_legend,'FontSize',14)
+                h_legend=legend(handle,dataLabels,'Location','SouthEast');
+                set(h_legend,'FontSize',14)
+            end
             hx=xlabel('Ideal Uniform CDF');
             hy=ylabel('Empirical CDF');
             title({'KS Plot of Rescaled ISIs'; 'with 95% Confidence Intervals'},'FontWeight','bold','FontSize',11,'FontName','Arial');
@@ -1204,7 +1257,9 @@ classdef FitResult < handle
             h_legend=legend(dataLabels,'Location','NorthEast');     
             set(h_legend,'FontSize',14)
             pos = get(h_legend,'position');
-            set(h_legend, 'position',[pos(1)+.05 pos(2) pos(3:4)]);
+            if(~isempty(pos))
+                 set(h_legend, 'position',[pos(1)+.05 pos(2) pos(3:4)]);
+            end
             
             hy=ylabel('u_{j+1}'); hx=xlabel('u_j');
             set([hx, hy],'FontName', 'Arial','FontSize',12,'FontWeight','bold');
@@ -1252,14 +1307,20 @@ classdef FitResult < handle
 %                     hold on; 
 %                     %labelArray{i} = ['Fit ' num2str(i)];
 %              end
-            
-            rhoSig.plot;
+            if(~isempty(rhoSig))
+                rhoSig.plot;
+            end
             h_legend=legend(fitObj.lambda.dataLabels,'Location','NorthEast');            
             set(h_legend,'FontSize',14)
             pos = get(h_legend,'position');
-            set(h_legend, 'position',[pos(1)+.05 pos(2) pos(3:4)]);
+            if(~isempty(pos))
+             set(h_legend, 'position',[pos(1)+.05 pos(2) pos(3:4)]);
+            end
             %legend(h,labelArray); 
-            hold on; confBoundSig.plot;
+            hold on; 
+            if(~isempty(confBoundSig))
+                confBoundSig.plot;
+            end
             title({'Autocorrelation Function';'of Rescaled ISIs'; 'with 95% CIs'},'FontWeight','bold',...
             'FontSize',11,...
             'FontName','Arial');
@@ -1308,8 +1369,15 @@ classdef FitResult < handle
             fitObj.KSStats.xAxis    =xAxis;
             fitObj.KSStats.KSSorted =KSSorted;
             
+            
             for i=1:size(xAxis,2);
                 [differentDists(i),pVal(i),ks_stat(i)]=kstest2(fitObj.KSStats.xAxis(:,i) ,fitObj.KSStats.KSSorted(:,i));
+            end
+            if(~exist('differentDists'))
+                differentDists=1;
+            end
+            if(~exist('pVal'))
+                pVal=1;
             end
             
             fitObj.KSStats.ks_stat  =ks_stat;

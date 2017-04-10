@@ -48,6 +48,7 @@ classdef Trial <handle
         minTime;    % minTime of all data or minTime of interest
         maxTime;    % maxTime of all data or maxTime of interest
         covMask;    % mask indicating visible covariates
+        ensCovMask; % mask indicating which neurons to consider for neighbor effcts;
         neuronMask; % mask indicating visible neurons
         trainingWindow   % start and endtimes for training data
         validationWindow % start and endtime for validation data
@@ -59,7 +60,7 @@ classdef Trial <handle
     
 
     methods
-        function tObj=Trial(nspikeColl, covarColl, event, hist,ensCovHist)
+        function tObj=Trial(nspikeColl, covarColl, event, hist,ensCovHist,ensCovMask)
             % tObj=Trial(nspikeColl, covarColl, event, hist,ensCovHist)
             % nspikeColl: is an <a href="matlab:help('nstColl')">nstColl</a> object 
             %             containing all of the relevant spike trains for this experimental trial.
@@ -70,6 +71,10 @@ classdef Trial <handle
             %            object for any given spike train
             % ensCovHist:<a href="matlab:help('History')">History</a> 
             %            object that specifies how much history to include for the ensemble effect. 
+            if(nargin<6)
+                nSpikes = nspikeColl.numSpikeTrains;
+                ensCovMask = ones(nSpikes,nSpikes)-eye(nSpikes,nSpikes);
+            end
             if(nargin<5)
                ensCovHist = []; 
             end
@@ -110,7 +115,7 @@ classdef Trial <handle
 
             tObj.covMask    = covarColl.covMask;
             tObj.neuronMask = nspikeColl.neuronMask;
-            
+            tObj.ensCovMask = ensCovMask;
              if(~tObj.isSampleRateConsistent)
                 tObj.makeConsistentSampleRate;
              else
@@ -161,7 +166,7 @@ classdef Trial <handle
             end
             
             if(~isempty(partitionTimes))
-                partitionTimes = round(partitionTimes*tObj.sampleRate/10)./tObj.sampleRate*10; %make sure that the partition time are achievable at the current sampleRate;
+                %partitionTimes = round(partitionTimes*tObj.sampleRate/10)./tObj.sampleRate*10; %make sure that the partition time are achievable at the current sampleRate;
                 % if sampleRate is 100 then we multiply partionTimes by 10
                 % and so we keep only the first decimal place.
                 if(length(partitionTimes)==4)
@@ -274,7 +279,16 @@ classdef Trial <handle
               tObj.covarColl.resample(sampleRate);
               tObj.resampleEnsColl;
         end
-        
+        function setEnsCovMask(tObj,mask)
+           % setEnsCovMask(tObj, mask)
+           % sets the mask of neighboring neurons to be considered when
+           % ensCovHist is set
+           if(nargin<2 || isempty(mask))
+               nSpikes = tObj.nspikeColl.numSpikeTrains;
+               mask = ones(nSpikes,nSpikes)-eye(nSpikes,nSpikes);
+           end
+           tObj.ensCovMask=mask; % needs to be a nSpikeTrain x nSpikeTrain matrix with zeroes along diagonal if all neurons are possible neighbors
+        end
         function setCovMask(tObj,mask)
             % setCovMask(tObj,mask)
             % sets the covariate mask of the trial and of the covColl to
@@ -454,7 +468,7 @@ classdef Trial <handle
             if(nargin<2)
                 error('Must specify neuronNumber to getDesignMatrix!');
             end
-            
+                    
             %repType='zero-mean';
             repType='standard';
             X=tObj.covarColl.dataToMatrix(repType,varargin{:});
@@ -468,7 +482,8 @@ classdef Trial <handle
                 end
             end
             if(tObj.isEnsCovHistSet)
-                E = tObj.getEnsCovMatrix(neuronNum);
+                includedNeurons = find(tObj.ensCovMask(:,neuronNum)==1);
+                E = tObj.getEnsCovMatrix(neuronNum,includedNeurons);
                 if(isempty(X))
                     X=E;
                 else
@@ -476,14 +491,19 @@ classdef Trial <handle
                 end
             end
         end        
-        function ensCovMatOut = getEnsCovMatrix(tObj,neuronNum,varargin)
+        function ensCovMatOut = getEnsCovMatrix(tObj,neuronNum,includedNeurons,varargin)
+            if(nargin<3)
+               includedNeurons = find(tObj.ensCovMask(:,neuronNum)==1);
+            end
             if(nargin<2)
                 error('Must specify neuronNumber to get the right neighbors!');
             end
             if(tObj.isEnsCovHistSet && ~isempty(neuronNum))
                 if(neuronNum>0 && neuronNum<=tObj.nspikeColl.numSpikeTrains)
                     ensCovCollTemp = tObj.ensCovColl;
-                    ensCovCollTemp.maskAwayAllExcept(tObj.getNeuronNeighbors(neuronNum));
+                    neighbors = tObj.getNeuronNeighbors(neuronNum);
+                    neighbors = intersect(neighbors, includedNeurons);
+                    ensCovCollTemp.maskAwayAllExcept(neighbors);
                     repType='standard';
                     ensCovMatOut=ensCovCollTemp.dataToMatrix(repType,varargin{:});
                 end
@@ -793,6 +813,11 @@ classdef Trial <handle
         function shiftCovariates(tObj, varargin)
             tObj.covarColl.setCovShift(varargin{:});
             tObj.makeConsistentTime;
+        end
+        
+        function resetEnsCovMask(tObj)
+            nSpikes = tObj.nspikeColl.numSpikeTrains;
+            tObj.ensCovMask = ones(nSpikes,nSpikes)-eye(nSpikes,nSpikes);
         end
         function resetCovMask(tObj)
             % resetCovMask(tObj)

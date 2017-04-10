@@ -38,13 +38,14 @@ classdef TrialConfig <handle
         sampleRate % sampleRate to be used for the fitting of this trial
         history % History object this trial
         ensCovHist % History term for neiboring neurons - aka Ensemble History
+        ensCovMask % Mask Matrix for neighboring neurons;
         name % Name of the configuration
         
     end
     
     
     methods
-        function tcObj=TrialConfig(covMask,sampleRate, history,ensCovHist,covLag,name)
+        function tcObj=TrialConfig(covMask,sampleRate, history,ensCovHist,ensCovMask,covLag,name)
            % tcObj=TrialConfig(covMask,sampleRate, history,covHist,covLag,name)
            % covMask: List of covariate names and labels that are to be used:
            %  ex: {{'Position','x'},{'Velocity','v_x'}} 
@@ -60,11 +61,14 @@ classdef TrialConfig <handle
            % ensCovHist: same as history. Used to determine ensemble covariate history
            % covLag : delay to be used with covariates
            % name:    name o f the configuration
-           if(nargin<6 || isempty(name))
+           if(nargin<7 || isempty(name))
                name ='';
            end
-           if(nargin<5 || isempty(covLag))
+           if(nargin<6 || isempty(covLag))
                 covLag=[];
+           end
+           if(nargin<5 || isempty(ensCovMask))
+               ensCovMask=[];
            end
            if(nargin<4 || isempty(ensCovHist))
                ensCovHist = [];
@@ -83,6 +87,7 @@ classdef TrialConfig <handle
            tcObj.sampleRate = sampleRate;
            tcObj.history = history;
            tcObj.ensCovHist = ensCovHist;
+           tcObj.ensCovMask = ensCovMask;
            tcObj.covLag  = covLag;
            tcObj.name    = name;
         end
@@ -119,8 +124,10 @@ classdef TrialConfig <handle
             
             if(~isempty(tcObj.ensCovHist))
                 trial.setEnsCovHist(tcObj.ensCovHist);
+                trial.setEnsCovMask(tcObj.ensCovMask);
             else
                 trial.setEnsCovHist; %sets it to be empty
+                trial.setEnsCovMask; %sets it to the default;
             end
 %             trial.setTrialTimesFor('training');
         end

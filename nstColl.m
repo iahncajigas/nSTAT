@@ -63,6 +63,14 @@ classdef nstColl < handle
                 nstCollObj.addToColl(nst);
             end
         end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %Merge
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        function nstCollObj = merge(nstCollObj, nstColl2)
+           nstCollObj.addToColl(nstColl2); 
+        end
+        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %Get Functions
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -158,7 +166,20 @@ classdef nstColl < handle
            end
         end
        
-        
+        function nstCollObj=shiftTime(nstCollObj,timeShift)
+            %shifts the entire collection by timeShift. If timeShift is
+            %empty or not give, the entire collection is shifted so that
+            %minTime =0;
+            if(nargin<2 || isempty(timeShift))
+                timeShift = -nstCollObj.minTime;
+            end
+            oldnSpikes= nstCollObj.nstrain;
+            for i=1:length(oldnSpikes)
+                nNew{i} = nspikeTrain(oldnSpikes{i}.spikeTimes + timeShift);
+            end
+            newColl = nstColl(nNew);
+            nstCollObj = newColl;
+        end
         function setMinTime(nstCollObj,minTime)
             % setMinTime(nstCollObj,minTime)
             % calls setMinTime on all nspikeTrains in the collection and 
@@ -317,6 +338,9 @@ classdef nstColl < handle
                 end
               elseif(isa(nst,'nspikeTrain'))
                   nstCollObj.addSingleSpikeToColl(nst);
+              elseif(isa(nst,'nstColl'))
+                  newSpikes = nst.nstrain;
+                  nstCollObj.addToColl(newSpikes);
               else
                   error('Can only add single spikes or cells with spikes');
               end
@@ -423,6 +447,7 @@ classdef nstColl < handle
         function answer=isSigRepBinary(nstCollObj)
            answer = nstCollObj.BinarySigRep; 
         end
+        
         function answer=BinarySigRep(nstCollObj)
             % answer=BinarySigRep(nstCollObj)
             % answer=1 if the all of the SignalObj representations of each
@@ -1120,17 +1145,20 @@ classdef nstColl < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %Plotting Functions
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        function plot(nstCollObj,selectorArray, minTime, maxTime,handle)
-            if(nargin<5)
+        function handle=plot(nstCollObj,selectorArray, minTime, maxTime,handle,reverseOrderPlot)
+            if(nargin<6 || isempty(reverseOrderPlot))
+                reverseOrderPlot =0;
+            end
+            if(nargin<5 || isempty(handle))
                 handle = gca;
             end
-            if(nargin<4)
+            if(nargin<4 || isempty(maxTime))
                 maxTime=nstCollObj.maxTime;
             end
-            if(nargin<3)
+            if(nargin<3 || isempty(minTime))
                 minTime=nstCollObj.minTime;
             end
-            if(nargin<2)
+            if(nargin<2 || isempty(selectorArray))
                 if(nstCollObj.isNeuronMaskSet)
                     selectorArray = nstCollObj.getIndFromMask;
                 else
@@ -1143,12 +1171,23 @@ classdef nstColl < handle
             yOffset = 0:1:length(selectorArray)-1;
             yOffset = yOffset + dHeight/2;
 
-            for i=1:length(selectorArray)
-                currentObj = nstCollObj.getNST(selectorArray(i));
-                currentObj.plot(dHeight, yOffset(i), handle); hold all;
-                yticklabels{i} = currentObj.name;
-                if(strcmp(yticklabels{i},''));
-                    yticklabels{i} = num2str(selectorArray(i));
+            if(reverseOrderPlot==0)
+                for i=1:length(selectorArray)
+                    currentObj = nstCollObj.getNST(selectorArray(i));
+                    currentObj.plot(dHeight, yOffset(i), handle); hold all;
+                    yticklabels{i} = currentObj.name;
+                    if(strcmp(yticklabels{i},''));
+                        yticklabels{i} = num2str(selectorArray(i));
+                    end
+                end
+            else
+                for i=1:length(selectorArray)
+                    currentObj = nstCollObj.getNST(selectorArray(i));
+                    currentObj.plot(dHeight, yOffset(end-(i-1)), handle); hold all;
+                    yticklabels{i} = currentObj.name;
+                    if(strcmp(yticklabels{i},''));
+                        yticklabels{i} = num2str(selectorArray(i));
+                    end
                 end
             end
             xlabel('$$ time [s] $$','Interpreter','latex');            
@@ -1158,8 +1197,11 @@ classdef nstColl < handle
             v=axis;
 %             minTime
 %             maxTime
-%             
-            axis([minTime,maxTime,v(3),v(4)]);
+%           
+            if(minTime~=maxTime)
+             axis([minTime,maxTime,v(3),v(4)]);
+            end
+            handle=gca;
 
 %             plotHandle = figure(handle);
 %             binwidth = max(nstCollObj.getMaxBinSizeBinary,.001);
@@ -1186,17 +1228,69 @@ classdef nstColl < handle
 
         end
    
-        function plotISIHistogram(nstCollObj,selectorArray, minTime, maxTime,handle)
-            if(nargin<5)
-                handle = gca;
-            end
-            if(nargin<4)
+        function minISIs = getMinISIs(nstCollObj, selectorArray, minTime,maxTime)
+            if(nargin<4 || isempty(maxTime))
                 maxTime=nstCollObj.maxTime;
             end
-            if(nargin<3)
+            if(nargin<3 || isempty(minTime))
                 minTime=nstCollObj.minTime;
             end
-            if(nargin<2)
+            if(nargin<2 || isempty(selectorArray))
+                if(nstCollObj.isNeuronMaskSet)
+                    selectorArray = nstCollObj.getIndFromMask;
+                else
+                    selectorArray = 1:nstCollObj.numSpikeTrains;
+                end
+            end
+             
+            ISIs = nstCollObj.getISIs(selectorArray, minTime, maxTime);
+            minISIs = zeros(1,length(selectorArray));
+            for i=1:length(ISIs)
+               temp = min(ISIs{i});
+               if(isempty(temp))
+                    minISIs(i)=0;
+               else
+                    minISIs(i) = min(ISIs{i}); 
+               end
+            end
+        end
+        
+        function ISIs=getISIs(nstCollObj,selectorArray,minTime,maxTime)
+            if(nargin<4 || isempty(maxTime))
+                maxTime=nstCollObj.maxTime;
+            end
+            if(nargin<3 || isempty(minTime))
+                minTime=nstCollObj.minTime;
+            end
+            if(nargin<2 || isempty(selectorArray))
+                if(nstCollObj.isNeuronMaskSet)
+                    selectorArray = nstCollObj.getIndFromMask;
+                else
+                    selectorArray = 1:nstCollObj.numSpikeTrains;
+                end
+            end
+            
+            
+            for i=1:length(selectorArray)
+                currentObj = nstCollObj.getNST(selectorArray(i));
+                ISIs{i} = currentObj.getISIs(minTime,maxTime);
+               
+            end
+     
+        
+        end
+        
+        function plotISIHistogram(nstCollObj,selectorArray, minTime, maxTime,handle)
+            if(nargin<5 || isempty(handle))
+                handle = gca;
+            end
+            if(nargin<4 || isempty(maxTime))
+                maxTime=nstCollObj.maxTime;
+            end
+            if(nargin<3 || isempty(minTime))
+                minTime=nstCollObj.minTime;
+            end
+            if(nargin<2 || isempty(selectorArray))
                 if(nstCollObj.isNeuronMaskSet)
                     selectorArray = nstCollObj.getIndFromMask;
                 else
@@ -1205,9 +1299,15 @@ classdef nstColl < handle
             end
             
                         
+            f=factor(length(selectorArray));
+            
             for i=1:length(selectorArray)
                 currentObj = nstCollObj.getNST(selectorArray(i));
-                figure;
+                if(length(f)==1)
+                    subplot(1,f,i);
+                else
+                    subplot(f(1),prod(f(2:end)),i);
+                end
                 currentObj.plotISIHistogram(minTime,maxTime); %hold all;
                 yticklabels{i} = currentObj.name;
                 if(strcmp(yticklabels{i},''));
@@ -1218,11 +1318,11 @@ classdef nstColl < handle
             %set(gca,'YTick',yOffset);
             %set(gca,'YTickLabel',yticklabels);
             %axis tight;
-            %v=axis;
+            v=axis;
 %             minTime
 %             maxTime
 %             
-            %axis([minTime,maxTime,v(3),v(4)]);
+            axis([minTime,maxTime,v(3),v(4)]);
         end
         
         function plotExponentialFit(nstCollObj,selectorArray, minTime, maxTime,numBins,handle)

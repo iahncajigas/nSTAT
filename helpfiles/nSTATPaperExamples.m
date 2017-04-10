@@ -1,4 +1,4 @@
-%% nSTAT J. Neuroscience Methods Paper Examples
+c%% nSTAT J. Neuroscience Methods Paper Examples
 %
 % *Author*: Iahn Cajigas 
 %
@@ -1098,7 +1098,6 @@ if(~CompilingHelpFile)
         % Data sampled at 30 Hz but just to be sure
         delta=min(diff(time));
         sampleRate = round(1/delta);
-
         % Define Covariates for the analysis
         baseline = Covariate(time,ones(length(x),1),'Baseline','time','s','',...
                             {'mu'});
@@ -1136,7 +1135,7 @@ end
 % Statistics (less deviation from the 45 degree line), reduced AIC and
 % reduced BIC across the majority of cells and for both animals
 clear Summary;
- numAnimals =2;
+numAnimals =2;
  
 for n=1:numAnimals
     resData=load(strcat('PlaceCellAnimal',num2str(n),'Results.mat'));
@@ -1396,7 +1395,7 @@ end
 % decoding stage.
 %% Generate the conditional Intensity Function
 
-    close all;
+    close all; clear all;
     delta = 0.001; Tmax = 1;
     time = 0:delta:Tmax;
     numRealizations = 20;

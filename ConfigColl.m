@@ -149,6 +149,12 @@ classdef ConfigColl < handle
                end
            end
        end
+       function subsetConfigs=getSubsetConfigs(tcColl, subset)
+           for i=1:length(subset)
+               tempconfigs{i} = tcColl.getConfig(subset(i));
+           end
+           subsetConfigs=ConfigColl(tempconfigs);
+       end
        function structure = toStructure(tcColl)
           fNames = fieldnames(tcColl); 
           for i=1:length(fNames)

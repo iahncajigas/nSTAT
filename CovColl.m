@@ -492,9 +492,10 @@ classdef CovColl <handle
             % enforceSampleRate(ccObj) 
             % makes sure that all covariates have the same sampleRate as
             % that in ccObj.sampleRate;
+            currRate = ccObj.sampleRate;
             for i=1:ccObj.numCov;
                 currCov = ccObj.covArray{i}; %change the actual sample rate of the objects
-                if(and(and(round(currCov.sampleRate*1000)/1000~=round(ccObj.sampleRate*1000)/1000,~isnan(currCov.sampleRate)),~isnan(ccObj.sampleRate)))
+                if(and(and(round(currCov.sampleRate*currRate)/currRate~=round(ccObj.sampleRate*currRate)/currRate,~isnan(currCov.sampleRate)),~isnan(ccObj.sampleRate)))
                    currCov.resampleMe(ccObj.sampleRate);
                 end
             end
@@ -590,7 +591,13 @@ classdef CovColl <handle
             dimTot = sumDimensions(selectorCell);
             nCov   = numActCov(selectorCell);
             covInd = covIndFromSelector(selectorCell);
-            
+            maxTime=ccObj.getCov(1).maxTime;
+           
+            minTime=ccObj.getCov(1).minTime;
+           
+            binwidth=1/ccObj.getCov(1).sampleRate;
+                
+%             dataMat=zeros(floor(abs(maxTime-minTime)/binwidth)+1,dimTot);
             dataMat=zeros(length(ccObj.getCov(1).getSigRep.time),dimTot);
 %             size(dataMat)
             for i=1:nCov

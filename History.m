@@ -55,8 +55,8 @@ classdef History <handle
             HistObj.minTime     = minTime;
             HistObj.maxTime     = maxTime;
           end
-          
-          function cov = computeHistory(HistObj, nst,historyNum)
+
+          function cov = computeHistory(HistObj, nst,historyNum,tn)
               % cov = computeHistory(HistObj, nst)
               %
               % returns a CovColl if more than one neural spike train is
@@ -69,7 +69,11 @@ classdef History <handle
               % the number of history windows. The firing history
               % corresponding to the window $w_i$ is the ith component of
               % the covariate
+              % If tn is specified only compute the history at time tn
               
+              if(nargin<4)
+                  tn=[];
+              end
               if(nargin<3)
                   historyNum=[];
               end
@@ -80,7 +84,7 @@ classdef History <handle
 %                       if(strcmp(nst.getNST(i).name,''))
 %                           nst.getNST(i).setName(strcat('n',num2str(i)));
 %                       end
-                      temp{i} =HistObj.computeNSTHistoryWindow(nst.getNST(i),historyNum);
+                      temp{i} =HistObj.computeNSTHistoryWindow(nst.getNST(i),historyNum,tn);
                       if(strcmp(temp{i}.name,'History'))
                           %then nspikeTrain didnt have a name number
                           %history for the covariate collection
@@ -91,7 +95,7 @@ classdef History <handle
               elseif(isa(nst,'cell') && isa(nst{1},'nspikeTrain')) % a cell collection of neural spike trains
                   temp = cell(1,length(nst));
                   for i=1:length(nst)
-                      temp{i} = HistObj.computeNSTHistoryWindow(nst{i},historyNum);
+                      temp{i} = HistObj.computeNSTHistoryWindow(nst{i},historyNum,tn);
                       if(strcmp(temp{i}.name,'History'))
                           %then nspikeTrain didnt have a name number
                           %history for the covariate collection
@@ -101,7 +105,7 @@ classdef History <handle
                   cov = CovColl(temp);
                   cov.setSampleRate(nst{1}.sampleRate);
               elseif(isa(nst,'nspikeTrain'))
-                  temp=HistObj.computeNSTHistoryWindow(nst,historyNum);
+                  temp=HistObj.computeNSTHistoryWindow(nst,historyNum,tn);
                   temp.setName(['History #' num2str(historyNum) ' for ' nst.name]);
                   cov = CovColl(temp);
               else
@@ -192,7 +196,10 @@ classdef History <handle
         end
     end
     methods (Access = private)
-         function cov = computeNSTHistoryWindow(HistObj,nst,historyNum)
+         function cov = computeNSTHistoryWindow(HistObj,nst,historyNum,tn)
+             if(nargin<4)
+                 tn=[];
+             end
              if(nargin<3)
                  historyNum=[];
              end
@@ -208,7 +215,7 @@ classdef History <handle
               for i=1:length(tmax)
                   a=1;
                   
-%                   b=zeros(1,s.findNearestTimeIndex(tmax(i)));
+%                 b=zeros(1,s.findNearestTimeIndex(tmax(i)));
                   NumSamples = ceil(tmax(i)*nst.sampleRate);
                   b=zeros(1,NumSamples);
                   StartSample = ceil(tmin(i)*nst.sampleRate) +1; 
@@ -236,25 +243,35 @@ classdef History <handle
               xunits = s.xunits;
               yunits = s.yunits;
         
-              
+         
               if(~isempty(data))
-                cov = Covariate(s.time, data, name, xlabelval,xunits,yunits,dataLabels);
-                 %Window the data if minTime and maxTime have been set.
-              minTime=HistObj.minTime;
-              maxTime=HistObj.maxTime;
-              if(isempty(minTime))
-                  minTime=cov.minTime;
-              end
-              if(isempty(maxTime))
-                  maxTime=cov.maxTime;
-              end
-              cov.resample(nst.sampleRate);
-              wCov=cov.getSigInTimeWindow(minTime,maxTime);
-              wCov.setMinTime(nst.minTime);
-              wCov.setMaxTime(nst.maxTime);
-              cov=wCov;
-              
-              
+                  if(~isempty(tn))
+                      
+                      cov = Covariate(s.time, data, name, xlabelval,xunits,yunits,dataLabels);
+                      dataVals = cov.getValueAt(tn);
+%                       figure(2); cov.plot; hold on; plot(tn-1/s.sampleRate, dataVals,'o'); pause(.001);
+%                       cov = Covariate(tn-1/s.sampleRate, dataVals, name, xlabelval,xunits,yunits,dataLabels);
+%                       
+                      
+                  else
+                      cov = Covariate(s.time, data, name, xlabelval,xunits,yunits,dataLabels);
+                      %Window the data if minTime and maxTime have been set.
+                      minTime=HistObj.minTime;
+                      maxTime=HistObj.maxTime;
+                      if(isempty(minTime))
+                          minTime=cov.minTime;
+                      end
+                      if(isempty(maxTime))
+                          maxTime=cov.maxTime;
+                      end
+                      cov.resample(nst.sampleRate);
+                      wCov=cov.getSigInTimeWindow(minTime,maxTime);
+                      wCov.setMinTime(nst.minTime);
+                      wCov.setMaxTime(nst.maxTime);
+                      cov=wCov;
+                  end
+            
+                  
               else
                   cov = Covariate([], data, name, xlabelval,xunits,yunits,dataLabels);
               end
