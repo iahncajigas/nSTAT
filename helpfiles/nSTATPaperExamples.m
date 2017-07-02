@@ -1,4 +1,4 @@
-c%% nSTAT J. Neuroscience Methods Paper Examples
+%% nSTAT J. Neuroscience Methods Paper Examples
 %
 % *Author*: Iahn Cajigas 
 %
@@ -1154,23 +1154,6 @@ dKS(1:Summary{1}.numNeurons,1) = (Summary{1}.KSStats(:,1)-Summary{1}.KSStats(:,2
 dKS(1:Summary{2}.numNeurons,2) = (Summary{2}.KSStats(:,1)-Summary{2}.KSStats(:,2)) ;
 
 boxplot(dKS ,{'Animal 1', 'Animal 2'},'labelorientation','inline'); 
-h = get(get(gca,'child'),'child');
-group_name_handle = findobj(h,'type','text');
-group_name_handle = flipud(group_name_handle); %place in correct order - find obj returns backwards
-v=axis;
-vdiffy = v(4)-v(3);
-vdiffx = v(2)-v(1);
-for j=1:length(group_name_handle)
-    text(0,0,get(group_name_handle(j),'string'),...
-        'color','k','position',[j-.0*vdiffx v(3)-.02*vdiffy 0],...
-        'rotation',-90,'Fontsize',11,'FontName','Arial','FontWeight','bold');
-end
-delete(group_name_handle);
-
-% ylabel('\Delta KS Statistics');  
-
-% hx=get(gca,'XLabel');  hy=get(gca,'YLabel');
-% set([hx hy],'FontName', 'Arial','FontSize',11,'FontWeight','bold');
 title('\Delta KS Statistic','FontWeight','bold','FontSize',14,...
     'FontName','Arial');
                   
@@ -1181,21 +1164,6 @@ dAIC(1:Summary{1}.numNeurons,1) = Summary{1}.getDiffAIC(1);
 dAIC(1:Summary{2}.numNeurons,2) = Summary{2}.getDiffAIC(1);
 
 boxplot(dAIC ,{'Animal 1', 'Animal 2'},'labelorientation','inline'); 
-h = get(get(gca,'child'),'child');
-group_name_handle = findobj(h,'type','text');
-group_name_handle = flipud(group_name_handle); %place in correct order - find obj returns backwards
-v=axis;
-vdiffy = v(4)-v(3);
-vdiffx = v(2)-v(1);
-for j=1:length(group_name_handle)
-    text(0,0,get(group_name_handle(j),'string'),'color','k',...
-        'position',[j-.0*vdiffx v(3)-.02*vdiffy 0],'rotation',-90,...
-        'Fontsize',11,'FontName','Arial','FontWeight','bold');
-end
-delete(group_name_handle);
-% ylabel('\Delta AIC'); %xticklabel_rotate([],45,[],'Fontsize',6);
-% hx=get(gca,'XLabel');  hy=get(gca,'YLabel');
-% set([hx hy],'FontName', 'Arial','FontSize',11,'FontWeight','bold');
 title('\Delta AIC','FontWeight','bold','FontSize',14,'FontName','Arial');
                   
 
@@ -1205,20 +1173,6 @@ dBIC(1:Summary{1}.numNeurons,1) = Summary{1}.getDiffBIC(1);
 dBIC(1:Summary{2}.numNeurons,2) = Summary{2}.getDiffBIC(1);
 
 boxplot(dBIC ,{'Animal 1', 'Animal 2'},'labelorientation','inline'); %ylabel('\Delta BIC'); %xticklabel_rotate([],45,[],'Fontsize',6);
-h = get(get(gca,'child'),'child');
-group_name_handle = findobj(h,'type','text');
-group_name_handle = flipud(group_name_handle); %place in correct order - find obj returns backwards
-v=axis;
-vdiffy = v(4)-v(3);
-vdiffx = v(2)-v(1);
-for j=1:length(group_name_handle)
-    text(0,0,get(group_name_handle(j),'string'),'color','k',...
-        'position',[j-.0*vdiffx v(3)-.02*vdiffy 0],'rotation',-90,...
-        'Fontsize',11,'FontName','Arial','FontWeight','bold');
-end
-delete(group_name_handle);
-% hx=get(gca,'XLabel');  hy=get(gca,'YLabel');
-% set([hx hy],'FontName', 'Arial','FontSize',11,'FontWeight','bold');
 title('\Delta BIC','FontWeight','bold','FontSize',14,'FontName','Arial');
 
 %  close all;
@@ -1279,6 +1233,7 @@ for n=1:numAnimals
         % 2d plot of all the cell's fields
         if(n==1)
             h4=figure(4);
+            colormap('jet');
             if(i==1)
                 tb=annotation(h4,'textbox',...
                     [0.283261904761904 0.928571428571418 ...
@@ -1291,6 +1246,7 @@ for n=1:numAnimals
             subplot(7,7,i); 
         elseif(n==2)
             h6=figure(6);
+            colormap('jet');
             if(i==1)
                 annotation(h6,'textbox',...
                     [0.283261904761904 0.928571428571418 ...
@@ -1308,6 +1264,7 @@ for n=1:numAnimals
 
         if(n==1)
             h5=figure(5);
+            colormap('jet');
             if(i==1)
                 annotation(h5,'textbox',...
                     [0.303261904761904 0.928571428571418 ...
@@ -1320,6 +1277,7 @@ for n=1:numAnimals
             subplot(7,7,i); 
         elseif(n==2)
             h7=figure(7);
+            colormap('jet');
             if(i==1)
                annotation(h7,'textbox',...
                     [0.303261904761904 0.928571428571418 ...
@@ -2015,7 +1973,7 @@ for n=1:numExamples
     % matlabpool open;
      for i=1:numCells
          tempData  = exp(dataMat*coeffs(i,:)');
-         if(strcmp(fitType,'binomial'));
+         if(strcmp(fitType,'binomial'))
             lambdaData = tempData./(1+tempData);
          else
             lambdaData = tempData;
@@ -2057,7 +2015,7 @@ for n=1:numExamples
         coeffs(:,1),coeffs(:,2:end)',fitType,delta,[],[],x0,Pi0, yT,PiT);
     [S_estNT, X_estNT, W_estNT, MU_estNT, X_sNT, W_sNT,pNGivenSNT]=...
         DecodingAlgorithms.PPHybridFilterLinear(A, Q, p_ij,Mu0, dN',...
-        coeffs(:,1),coeffs(:,2:end)',fitType,delta,[],[],x0);
+        coeffs(:,1),coeffs(:,2:end)',fitType,delta,[],[],x0,Pi0);
     
     %Store the results for computing relevant statistics later
     X_estAll(:,:,n) = X_est;

@@ -744,9 +744,10 @@ end
             % for independence of the xj's. Independence of the xj's
             % suggests indepence of the uj's and zj's (a condition
             % necessary for the Time Rescaling Theorem).
+            
             U=1-exp(-Z);
             U(U>=.999999)=.999999; %Prevent any 1 values which lead to infinity in X
-            U(U==0)=.000001;
+            U(U<=0)=.000001;
             X = norminv(U,0,1);
             %X=erfinv(U);
             [~,colm] = size(X);

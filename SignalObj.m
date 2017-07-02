@@ -777,11 +777,12 @@ classdef SignalObj < handle
             for i=1:s3.dimension
                 if(s3.dimension ==1)
                     if(~strcmp(sObj.dataLabels,''))
-                        s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels);
+                        
+                        s3.dataLabels{i}= strjoin(['\frac{d}{' denomstr '}' s3.dataLabels]);
                     end
                 else
                     if(~strcmp(sObj.dataLabels{i},''))
-                        s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels{i});
+                        s3.dataLabels{i}= strjoin(['\frac{d}{' denomstr '}' s3.dataLabels{i}]);
                     end
                 end
             end
@@ -2067,7 +2068,8 @@ classdef SignalObj < handle
 %                 labelArray= cell(1,length(sArray));
                 labelArray =sObj.dataLabels(sArray);
 %                 for i=1:length(sArray)
-%                     labelArray{i} = strcat('$$',sObj.dataLabels{sArray(i)},'$$');
+% %                     labelArray{i} = strcat('$$',sObj.dataLabels{sArray(i)},'$$')
+%                     labelArray{i} = sObj.dataLabels{sArray(i)};
 %                 end
                 legend(handle,labelArray);%,'Interpreter','latex');
             end

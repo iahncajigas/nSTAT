@@ -199,7 +199,7 @@ classdef FitResult < handle
                     dev = [fitObj.dev newFitObj.dev];
                     AIC = [fitObj.AIC newFitObj.AIC];
                     BIC = [fitObj.BIC newFitObj.BIC];
-                    logLL = [fitObj.logLL newFitObj.logLL];
+                    logLL = [fitObj.logLL newFit.logLL];
                     stats=fitObj.stats(1:fitObj.numResults);
                     stats((fitObj.numResults+1):(fitObj.numResults+newFitObj.numResults)) = newFitObj.stats(1:newFitObj.numResults);
                     lambda = fitObj.lambda.merge(newFitObj.lambda);
@@ -1463,8 +1463,7 @@ classdef FitResult < handle
                     ensHistObject{i} = History.fromStructure(structure.ensHistObjects{i});
                 end
                 configColl = ConfigColl.fromStructure(structure.configs);
-%                 fitObj=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObj,lambda,b, dev, stats,AIC,BIC,logLL, configColl,XvalData,XvalTime,distribution)
-                fitObj=FitResult(spikeObj,structure.covLabels,structure.numHist,histObjects,ensHistObject,lambda,structure.b, structure.dev, structure.stats,structure.AIC,structure.BIC,structure.logLL,configColl,structure.XvalData,structure.XvalTime,structure.fitType);
+                fitObj=FitResult(spikeObj,structure.covLabels,structure.numHist,histObjects,ensHistObject,lambda,structure.b, structure.dev, structure.stats,structure.AIC,structure.BIC,configColl,structure.XvalData,structure.XvalTime,structure.fitType);
                 fitObj.setKSStats(structure.Z,structure.U, structure.KSStats.xAxis, structure.KSStats.KSSorted, structure.KSStats.ks_stat);
                 fitObj.setInvGausStats(structure.X,rhoSig,confBoundSig);
                 fitObj.setFitResidual(M);

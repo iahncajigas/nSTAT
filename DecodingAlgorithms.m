@@ -2726,8 +2726,8 @@ classdef DecodingAlgorithms
             XvalTime{1} = [];
             spikeTraining = currSpikes;
 
-
-            fitResults=FitResult(spikeTraining,labels,numHist,histObj,ensHistObj,lambda,b, dev, stats,AIC,BIC,configColl,XvalData,XvalTime,distrib);
+            % fitObj=FitResult(spikeObj,covLabels,numHist,histObjects,ensHistObj,lambda,b, dev, stats,AIC,BIC,logLL, configColl,XvalData,XvalTime,distribution)
+            fitResults=FitResult(spikeTraining,labels,numHist,histObj,ensHistObj,lambda,b, dev, stats,AIC,BIC,logll, configColl,XvalData,XvalTime,distrib);
             DTCorrection=1;
             makePlot=0;
             Analysis.KSPlot(fitResults,DTCorrection,makePlot);
