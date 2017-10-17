@@ -66,14 +66,30 @@ classdef nspikeTrain < handle
         xunits
         yunits
         dataLabels
+        MER  %signal of the micro-electrode recordings when available 
+        avgFiringRate
+        %Bursting related parameters%
         B    %burstiness parameter
         An   %burtiness parameters without finite sample effect - Kim, E.-K., & Jo, H.-H. (2016). Measuring burstiness for finite event sequences. Physical Review E, 94(3). http://doi.org/10.1103/physreve.94.032311
-        
+        burstTimes
+        burstRate
+        burstDuration
+        burstSig
+        burstIndex % Hutchinson, et al. 1997 Effects of Apomorphine on GP Neurons in parkinsian Patients
+        numBursts
+        numSpikesPerBurst
+        avgSpikesPerBurst
+        stdSpikesPerBurst
+        Lstatistic  % Goldberg et. al 2002. Enhanced Synchrony among Primary Motor Cortex Neurons in the
+                    % 1-Methyl-4-Phenyl-1,2,3,6-Tetrahydropyridine Primate Model of Parkinson’s Disease
     end
     
     methods
-        function nst=nspikeTrain(spikeTimes,name,binwidth,minTime,maxTime, xlabelval, xunits, yunits,dataLabels)
+        function nst=nspikeTrain(spikeTimes,name,binwidth,minTime,maxTime, xlabelval, xunits, yunits,dataLabels,makePlots)
             %constructor
+            if(nargin<10|| isempty(makePlots))
+                makePlots=0;
+            end
             if(nargin<9 || isempty(dataLabels))
                 dataLabels = '';
             end
@@ -127,16 +143,13 @@ classdef nspikeTrain < handle
             nst.sigRep = [];
             nst.isSigRepBin=[];
 
-            
-            ISI=nst.getISIs;
-%             ISI = [spikeTimes(1); ISI; nst.maxTime-spikeTimes(end)];
-            spikeTimes =nst.spikeTimes;
-            sigma=std(ISI);
-            mu = mean(ISI);
-            r= sigma/mu;
-            nst.B = (r-1)/(r+1);
-            n=length(spikeTimes);
-            nst.An=(sqrt(n+2)*r-sqrt(n))./((sqrt(n+2)-2)*r+sqrt(n));
+            nst.computeStatistics(makePlots);            
+        end
+        function Lstat = getLStatistic(nstObj)
+           mISIs = mean(nstObj.getISIs); 
+           Pt = nstObj.getSigRep(mISIs);
+           Lstat = length(unique(Pt.data));
+         
         end
 %         function shift(nstObj,deltaT)
 %            nstObj.spikeTimes = nstObj.spikeTimes + deltaT;
@@ -147,6 +160,12 @@ classdef nspikeTrain < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %Set functions    
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        function setMER(nstObj,MERSig)
+           if(isa(MERSig,'SignalObj'))
+                nstObj.MER = MERSig;
+           end
+        end
+           
         function setName(nstObj,name)
            % setName(nstObj,name) 
            % set the name after construction
@@ -155,20 +174,129 @@ classdef nspikeTrain < handle
 %                 nstObj.sigRep.setName(name);
 %            end
         end
+        
+        function computeStatistics(nstObj,makePlots)
+            if(nargin<2 || isempty(makePlots))
+                makePlots = 0;
+            end
+            ISI=nstObj.getISIs;
+            spikeTimes =nstObj.spikeTimes;    
+            nstObj.avgFiringRate = length(spikeTimes)/(nstObj.maxTime - nstObj.minTime);
+            
+            
+            %% Compute Burst Parameters
+            % Hutchinson, et al. 1997
+            if(~isempty(ISI))
+                nstObj.burstIndex=1/mode(ISI)/nstObj.avgFiringRate;
+            
+                % Cells havingburst index values of approximately 1 to 1.5 had regular firing 
+                % intervals (ie, Border cells), cells in the range of 1.6 to 9.9 were “irregular” firing cells,
+                % and those with values greater that 10 were termed bursting cells.
+            
+            
+                % Kim, E.-K., & Jo, H.-H. (2016). Measuring burstiness for finite 
+                % event sequences. Physical Review E, 94(3), 032311. 
+                % http://doi.org/10.1103/PhysRevE.94.032311
+                sigma=std(ISI);
+                mu = mean(ISI);
+                r= sigma/mu;
+                nstObj.B = (r-1)/(r+1);  %burstiness index for infinite sequence
+                %B has the value of ?1 for regular time series as ? = 0, and 0 for Poissonian or random time series as ? = µ. Finally, the value of B approaches 1 for extremely bursty time series as ? ? ? for finite µ.
+                n=length(spikeTimes);
+                nstObj.An=(sqrt(n+2)*r-sqrt(n))./((sqrt(n+2)-2)*r+sqrt(n)); %corrected burstiness index for finite sequence
+
+               % Chen, L., Deng, Y., Luo, W., Wang, Z., & Zeng, S. (2009). Detection of bursts in 
+               % neuronal spike trains by the mean inter-spike interval method. Progress in Natural 
+               % Science, 19(2), 229. http://doi.org/10.1016/j.pnsc.2008.05.027
+                Ln = ISI(ISI<mu);
+                ML = mean(Ln);
+                if(~isempty(nstObj.spikeTimes))
+                    t=spikeTimes;
+    %                 t=[nstObj.spikeTimes(1); t];
+                else
+                    t=[];
+                end
+                burstISI = double(ISI<ML);
+    %             B=[1 1];
+    %             A=1;
+    %             if(length(burstISI<4))
+
+                    y=(burstISI(1:end)+[burstISI(2:end);0])>1;
+
+    %             else
+    % %                 y=filtfilt(B,A,burstISI)>1;
+    %             end
+                diffSig = [0;diff(y)];
+                tdiff = (t(1:end-1)+t(2:end))/2;
+
+
+
+
+                burstStart = find(diffSig==1);
+                burstEnd=find(diffSig==-1)+1;
+                if(isempty(burstStart))
+                    burstEnd=[];
+                    nstObj.burstDuration = [];
+                    nstObj.burstSig = [];
+                    nstObj.numSpikesPerBurst =[];
+                    nstObj.numBursts=[];
+                    nstObj.burstRate=[];
+
+                end
+
+                if(length(burstEnd)>length(burstStart))
+                    burstStart = [find(y(1:burstEnd(1))==1,1, 'first'); burstStart];
+                end
+
+                if(length(burstStart)>length(burstEnd))
+                    burstEnd = [find(y(burstStart(end):end)==1, 1,'last'); burstEnd];
+                end
+
+                if(~isempty(burstStart))
+                    if(makePlots==1)
+                        close all;
+                        nstObj.plot; hold on;
+                        plot(tdiff, ISI,'ko');
+                        plot([t(1) t(end)], ML*[1;1]); 
+                        plot(tdiff, diffSig,'r--');
+                        axis tight;
+                        plot(t(burstStart),1.2*ones(length(burstStart)),'bo'); hold on;
+                        plot(t(burstEnd),1.2*ones(length(burstEnd)),'bd');
+                    end
+                    burstData = zeros(length(spikeTimes),1);
+                    for i=1:length(burstStart)
+                        burstData(burstStart(i):burstEnd(i))=1;
+                    end
+
+                    nstObj.burstDuration = nstObj.spikeTimes(burstEnd)-nstObj.spikeTimes(burstStart);
+                    nstObj.burstSig = SignalObj(nstObj.spikeTimes,burstData,'Burst Signal');
+                    nstObj.burstTimes = nstObj.spikeTimes(burstStart);
+                    nstObj.numBursts=length(burstStart);
+                    nstObj.burstRate=nstObj.numBursts/(nstObj.maxTime-nstObj.minTime);
+                    nstObj.numSpikesPerBurst =burstEnd-burstStart + 1;
+                    nstObj.avgSpikesPerBurst = mean(nstObj.numSpikesPerBurst+1);
+                    nstObj.stdSpikesPerBurst = std(nstObj.numSpikesPerBurst+1);
+                    nstObj.Lstatistic        = nstObj.getLStatistic; %Goldberg et al 2002.
+                end
+            end    
+            
+        end
+        
         function sigRep = setSigRep(nstObj,binwidth,minTime,maxTime)
             %sigRep = setSigRep(nstObj, binwidth, minTime, maxTime)
               nstObj.sigRep = nstObj.getSigRep(binwidth,minTime,maxTime);
               nstObj.isSigRepBin = nstObj.isSigRepBinary;
               nstObj.sampleRate = nstObj.sigRep.sampleRate;
 %               sigRep=nstObj.sigRep;
-              nstObj.minTime = nstObj.sigRep.minTime;
-              nstObj.maxTime = nstObj.sigRep.maxTime;
+              nstObj.setMinTime(nstObj.sigRep.minTime);
+              nstObj.setMaxTime(nstObj.sigRep.maxTime);
         end        
         function setMinTime(nstObj,minTime)
            % setMinTime(sObj,nstObj)
            % sets the minimun value of the time vector for the SignalObj representation of the nspikeTrain.
            %nstObj.sigRep.setMinTime(minTime);
            nstObj.minTime=minTime;
+           nstObj.computeStatistics;
 %            nstObj.clearSigRep;
         end        
 %         function answer = get.isSigRepBin(nstObj)
@@ -180,6 +308,7 @@ classdef nspikeTrain < handle
            % representation of the nspikeTrain.
            %nstObj.sigRep.setMaxTime(maxTime);
            nstObj.maxTime=maxTime;
+           nstObj.computeStatistics;
 %            nstObj.clearSigRep;
         end
         function clearSigRep(nstObj)
@@ -227,10 +356,10 @@ classdef nspikeTrain < handle
                 end
                 if((nargin<2) || isempty(binwidth))
                     binwidth=1/nstObj.sampleRate; 
-                    precision =ceil(log10(nstObj.sampleRate));
+                    precision =2*ceil(log10(nstObj.sampleRate));
                     binwidth = roundn(binwidth,-precision); 
                 end
-                precision =ceil(log10(1/binwidth));
+                precision =2*ceil(log10(1/binwidth));
                 binwidth = roundn(binwidth,-precision); 
                 if(and(~isempty(maxTime),~isempty(minTime)))
                 %                     timeVec=linspace(minTime,maxTime,ceil((1/binwidth)*abs(maxTime-minTime)/binwidth)*binwidth+1); %scaling by binwidth to avoid roundoff error
@@ -358,6 +487,7 @@ classdef nspikeTrain < handle
             spikeTimes =nstObj.spikeTimes;
             h=plot(spikeTimes(2:end),ISI,'.');
             xlabel('time [s]');
+            
             ylabel('ISI [s]');
             sigma=std(ISI);
             mu = mean(ISI);
@@ -377,6 +507,28 @@ classdef nspikeTrain < handle
             index = and((nstObj.spikeTimes>=minTime),(nstObj.spikeTimes<=maxTime));
             windowedSpikeTimes = nstObj.spikeTimes(index);
         end
+        function h = plotJointISIHistogram(nstObj)
+            % based on: Detection of bursts in neuronal spike trains by the mean inter-spike interval method. (n.d.). Detection of bursts in neuronal spike trains by the mean inter-spike interval method.
+            
+            ISIs = nstObj.getISIs;
+            meanISI = mean(ISIs);
+            Ln = ISIs(ISIs<meanISI);
+            ML = mean(Ln);
+            loglog(ISIs(1:end-1),ISIs(2:end),'.'); hold on;
+            v=axis;
+            loglog(ML*[1;1],v(3:4),'k--');
+            loglog(v(1:2),ML*[1;1],'k--');
+            xlabel('ISI(t) [s]'); ylabel('ISI(t+1) [s]');
+           
+        end
+        function fieldVal = getFieldVal(nstObj,fieldName)
+            if(any(strcmp(fieldnames(nstObj),fieldName)))
+                fieldVal = nstObj.(fieldName);
+            else
+                fieldVal = [];
+            end
+            
+        end
         function counts = plotISIHistogram(nstObj,minTime,maxTime,numBins,handle)
 %             if(nargin<6 || isempty(color))
 %                 color = [0.831372559070587 0.815686285495758 0.7843137383461];
@@ -385,7 +537,7 @@ classdef nspikeTrain < handle
               handle=gca;
             end 
             if(nargin<4 || isempty(numBins))
-                numBins = 1000;
+                numBins = 100;
             end
             if(nargin<3 || isempty(maxTime))
                 maxTime = nstObj.maxTime;
@@ -396,8 +548,8 @@ classdef nspikeTrain < handle
             
             
             ISIs = nstObj.getISIs;
-            index=and(ISIs>=minTime, ISIs<=maxTime);
-            ISIs = ISIs(index);
+%             index=and(ISIs>=minTime, ISIs<=maxTime);
+%             ISIs = ISIs(index);
             binWidth=.001; %max(ISIs)/numBins;
 %             binWidth=1/numBins;
             if(~isempty(ISIs))
@@ -421,7 +573,8 @@ classdef nspikeTrain < handle
             hy=ylabel('Spike Counts');
             set([hx, hy],'FontName', 'Arial','FontSize',16,'FontWeight','bold');
             v=axis;
-            axis([minTime, maxTime, v(3:4)]);
+            axis tight;
+%             axis([minTime, maxTime, v(3:4)]);
             
             %histfit(ISIs,numBins,'exponential');
 %             h = get(gca,'Children');
@@ -653,7 +806,7 @@ classdef nspikeTrain < handle
 %                   answer=1;
 %               end      
 %             else
-              if(isempty(nstObj.sigRep))
+              if(isempty(nstObj.sigRep) || (nstObj.sampleRate~=nstObj.sigRep.sampleRate))
                   nstObj.getSigRep;
               end
               if(max(nstObj.sigRep.data)>1)

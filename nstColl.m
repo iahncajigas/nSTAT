@@ -165,7 +165,20 @@ classdef nstColl < handle
                end
            end
         end
-       
+        function [fieldVal, neuronNumbers]  = getFieldVal(nstCollObj,fieldName)
+            % Returns a vector of the value contained within each nspikeTrain.(fieldName)
+            % within the nstCollObj object. Empty values are skipped.
+            cnt =1;
+            fieldVal=[];
+            for i=1:nstCollObj.numSpikeTrains
+               currVal = nstCollObj.getNST(i).getFieldVal(fieldName); 
+               if(~isempty(currVal))
+                fieldVal(cnt)=currVal;
+                cnt = cnt+1;
+                neuronNumbers(cnt) = i;
+               end
+            end
+        end
         function nstCollObj=shiftTime(nstCollObj,timeShift)
             %shifts the entire collection by timeShift. If timeShift is
             %empty or not give, the entire collection is shifted so that

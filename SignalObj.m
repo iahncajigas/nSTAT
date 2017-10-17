@@ -114,7 +114,7 @@ classdef SignalObj < handle
                 name='';
             end
             [l,w]=size(time);
-            if(l>=w);
+            if(l>=w)
                 if(w>1)
                     error('Time vector can only have one dimension');
                 else
@@ -133,7 +133,7 @@ classdef SignalObj < handle
            if(l==length(s.time));
                 s.data=data;
                 s.dimension =w;
-            elseif(w==length(s.time));
+            elseif(w==length(s.time))
                 s.data=data';
                 s.dimension=l;
            else
@@ -157,7 +157,7 @@ classdef SignalObj < handle
             if(isnan(deltaT))%diff not well defined 
                 deltaT=0.001;
             end
-            precision =ceil(log10(1/deltaT));
+            precision =2*ceil(log10(1/deltaT));
             deltaT = roundn(deltaT,-precision);             
 %             deltaT = roundn(mean(diff(s.time)),-3); %To avoid round-off error, when computing samplerate
             s.sampleRate = 1/deltaT; 
@@ -385,7 +385,7 @@ classdef SignalObj < handle
                     elseif(length(plotProps)==1)
                         for i=1:sObj.dimension
                             sObj.plotProps{i} = cell2str(plotProps);
-                            display('Index not specified. All dimensions set to have same plotting properties');
+%                             display('Index not specified. All dimensions set to have same plotting properties');
                         end
                     else
                         error('Index not specified and more than 1 plotProp specified. Need to number of plotProps same as sObj.dimension or length 1');
@@ -777,12 +777,11 @@ classdef SignalObj < handle
             for i=1:s3.dimension
                 if(s3.dimension ==1)
                     if(~strcmp(sObj.dataLabels,''))
-                        
-                        s3.dataLabels{i}= strjoin(['\frac{d}{' denomstr '}' s3.dataLabels]);
+                        s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels);
                     end
                 else
                     if(~strcmp(sObj.dataLabels{i},''))
-                        s3.dataLabels{i}= strjoin(['\frac{d}{' denomstr '}' s3.dataLabels{i}]);
+                        s3.dataLabels{i}= strcat('\frac{d}{',denomstr,'}',s3.dataLabels{i});
                     end
                 end
             end
@@ -1136,7 +1135,12 @@ classdef SignalObj < handle
                          h=gcf;figure(h);
                 end
                 periodogram{i}=psd(Hs,xn,'Fs',fs,'NFFT',1024);
-                h=periodogram{i}.plot;legend(h, sObj.dataLabels{i});
+                
+                if(~isempty(sObj.dataLabels))
+                    h=periodogram{i}.plot;legend(h, sObj.dataLabels{i});
+                else
+                    h=periodogram{i}.plot;
+                end
             end
         end
         function mtmSpec = MTMspectrum(sObj,NW,NFFT,Pval)
@@ -1180,25 +1184,43 @@ classdef SignalObj < handle
                 h=plot(hpsd); legend(h, sObj.dataLabels{i},strcat('-',str1),strcat('+',str1));
             end
         end
-        function h = spectrogram(sObj,freqVec)
-            if(nargin<2)
-                freqVec=0:1:100;
+        function [spectrogramData,h] = spectrogram(sObj,freqVec,h)
+            if(nargin<3 ||isempty(h))
+                h=figure;
+            end
+            if(nargin<2 || isempty(freqVec))
+                freqVec=0:.1:50;
             end
             t=sObj.time;             % 2 secs @ 1kHz sample rate
             x=sObj.data;             % Start @ DC, cross 150Hz at t=1sec 
             F = freqVec;
-            
+            window=kaiser(round(length(t)/20));
+            nooverlap = round(round(length(t)/40));
             clear y f t p;
-            for i=1:sObj.dimension;
-                figure;
-                [y{i},f{i},t{i},p{i}] = spectrogram(x(:,i),2048,1000,F,sObj.sampleRate);                  
+            for i=1:sObj.dimension
+%                 figure;
+                [y{i},f{i},t{i},p{i}] = spectrogram(x(:,i),window,nooverlap,F,sObj.sampleRate);   
+                t{i} = t{i}+min(sObj.time);
                 surf(t{i},f{i},10*log10(abs(p{i})),'EdgeColor','none');   
                 axis xy; axis tight; colormap(jet); view(0,90);
-                xlabel('Time');
-                ylabel('Frequency (Hz)');
+                xlabel('time [s]');
+                ylabel('frequency [Hz]');
                 
             end
-            
+            if(sObj.dimension>1)
+                for i=1:sObj.dimension
+                    spectrogramData{i}.t = t{i};
+                    spectrogramData{i}.f = f{i};
+                    spectrogramData{i}.p = p{i};
+                    spectrogramData{i}.y = y{i};
+                end
+            else
+                spectrogramData.t = t{i};
+                spectrogramData.f = f{i};
+                spectrogramData.p = p{i};
+                spectrogramData.y = y{i};
+                
+            end
         end
         
         
@@ -1370,7 +1392,7 @@ classdef SignalObj < handle
                 if(size(sObj.data,1)>1)
                     for i=1:sObj.dimension
         %                 newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'spline','extrap');
-                        newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'nearest',0);
+                        newData(:,i)= interp1(sObj.time,sObj.data(:,i),newTime,'spline',0);
                     end
                 else
                     newData = sObj.data;
@@ -2068,8 +2090,7 @@ classdef SignalObj < handle
 %                 labelArray= cell(1,length(sArray));
                 labelArray =sObj.dataLabels(sArray);
 %                 for i=1:length(sArray)
-% %                     labelArray{i} = strcat('$$',sObj.dataLabels{sArray(i)},'$$')
-%                     labelArray{i} = sObj.dataLabels{sArray(i)};
+%                     labelArray{i} = strcat('$$',sObj.dataLabels{sArray(i)},'$$');
 %                 end
                 legend(handle,labelArray);%,'Interpreter','latex');
             end

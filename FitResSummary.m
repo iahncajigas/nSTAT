@@ -623,15 +623,14 @@ classdef FitResSummary < handle
             hx=get(gca,'XLabel');  hy=get(gca,'YLabel');
             set([hx hy],'FontName', 'Arial','FontSize',11,'FontWeight','bold');
             title('Change in AIC Across Neurons','FontWeight','bold','FontSize',11,'FontName','Arial');
+            set(gca,'XTickLabelRotation',90);
             
             subplot(2,4,8); frsObj.getDiffBIC(1); 
             ylabel('\Delta BIC'); %xticklabel_rotate([],45,[],'Fontsize',6);
             hx=get(gca,'XLabel');  hy=get(gca,'YLabel');
             set([hx hy],'FontName', 'Arial','FontSize',11,'FontWeight','bold');
-           
-
             title('Change in BIC Across Neurons','FontWeight','bold','FontSize',11,'FontName','Arial');
-            
+            set(gca,'XTickLabelRotation',90);
         end     
         function handle = boxPlot(frsObj,X,diffIndex,h,dataLabels,varargin)
             if(nargin<3)
